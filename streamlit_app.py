@@ -1,7 +1,10 @@
+# app.py - Streamlit 앱의 메인 파일
+# 형식: Python (.py)
+# 역할: 웹 인터페이스의 진입점으로, 전체 앱의 플로우를 제어합니다.
+
 import os
 import time
 import streamlit as st
-import re
 from datetime import datetime
 from typing import Dict, List, Any
 
@@ -12,31 +15,6 @@ from utils.rag_model import RAGModel
 
 # 설정 로드
 from config import APP_TITLE, APP_DESCRIPTION
-
-# 마크다운 특수기호 및 포맷 제거 함수
-def clean_markdown(text):
-    """마크다운 특수기호 및 포맷을 제거합니다."""
-    if not text:
-        return ""
-    
-    # ** 볼드체 포맷 처리
-    text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
-    
-    # # 제목 포맷 처리 (# 기호 제거하고 제목 텍스트 유지)
-    text = re.sub(r'^# (.*?)$', r'\1', text, flags=re.MULTILINE)
-    text = re.sub(r'^## (.*?)$', r'\1', text, flags=re.MULTILINE)
-    text = re.sub(r'^### (.*?)$', r'\1', text, flags=re.MULTILINE)
-    
-    # - 목록 포맷 처리
-    text = re.sub(r'^- (.*?)$', r'• \1', text, flags=re.MULTILINE)
-    
-    # * 목록 포맷 처리 
-    text = re.sub(r'^\* (.*?)$', r'• \1', text, flags=re.MULTILINE)
-    
-    # → 화살표 앞뒤 공백 처리
-    text = re.sub(r'→ \*(.*?)\*', r'→ \1', text)
-    
-    return text
 
 # 전역 변수 설정
 if 'answers' not in st.session_state:
@@ -49,6 +27,8 @@ if 'report_data' not in st.session_state:
     st.session_state.report_data = None
 if 'page' not in st.session_state:
     st.session_state.page = 'welcome'  # welcome, diagnostic, result
+if 'copy_clicked' not in st.session_state:
+    st.session_state.copy_clicked = False
 
 # 함수 정의
 def reset_diagnostic():
@@ -58,6 +38,7 @@ def reset_diagnostic():
     st.session_state.diagnosis_result = None
     st.session_state.report_data = None
     st.session_state.page = 'welcome'
+    st.session_state.copy_clicked = False
 
 def save_answer(question_id, answer):
     """질문에 대한 응답을 저장합니다."""
@@ -112,6 +93,10 @@ def calculate_diagnosis():
         )
         st.session_state.report_data = report_data
 
+def toggle_copy():
+    """복사 상태를 토글합니다."""
+    st.session_state.copy_clicked = not st.session_state.copy_clicked
+
 # 페이지 레이아웃
 def show_welcome_page():
     """환영 페이지를 표시합니다."""
@@ -131,28 +116,14 @@ def show_welcome_page():
     3. 진단 결과를 바탕으로 맞춤형 개선 전략을 확인할 수 있습니다.
     """)
     
-    # 진단 영역 매핑
-    areas_mapping = {
-        "인식하게 한다": "검색 노출 최적화",
-        "클릭하게 한다": "클릭율 높이는 전략",
-        "머물게 한다": "체류시간 늘리는 방법",
-        "연락오게 한다": "문의/예약 전환율 높이기",
-        "후속 피드백 받는다": "고객 재방문 유도 전략"
-    }
-    
     st.markdown("### 🔍 진단 영역")
-    areas_description = [
-        f"- **{areas_mapping.get(key, key)}**: {description}" 
-        for key, description in {
-            "인식하게 한다": "키워드 설정, 상세 설명, 위치 정보 등 기본 정보 최적화",
-            "클릭하게 한다": "이미지 품질, 차별점 표현, 캐치프레이즈 등 흥미 유발 요소",
-            "머물게 한다": "콘텐츠 품질, 업데이트 주기, 이벤트 활용 등 체류시간 증가 요소",
-            "연락오게 한다": "예약 기능, 전화 응대, 쿠폰, 전환 유도 문구 등 전환율 향상 요소",
-            "후속 피드백 받는다": "리뷰 관리, 저장/알림 유도, 단골 고객 관리 등 재방문 유도 요소"
-        }.items()
-    ]
-    
-    st.markdown('\n'.join(areas_description))
+    st.markdown("""
+    - **검색 노출 최적화**: 키워드 설정, 상세 설명, 위치 정보 등 기본 정보 최적화
+    - **클릭율 높이는 전략**: 이미지 품질, 차별점 표현, 캐치프레이즈 등 흥미 유발 요소
+    - **머물게 한다**: 콘텐츠 품질, 업데이트 주기, 이벤트 활용 등 체류시간 증가 요소
+    - **문의/예약 전환율 높이기**: 예약 기능, 전화 응대, 쿠폰, 전환 유도 문구 등 전환율 향상 요소
+    - **고객 재방문 유도 전략**: 리뷰 관리, 저장/알림 유도, 단골 고객 관리 등 재방문 유도 요소
+    """)
     
     if st.button("진단 시작하기", type="primary"):
         st.session_state.page = 'diagnostic'
@@ -164,18 +135,9 @@ def show_diagnostic_page():
     st.progress(progress)
     st.markdown(f"### 진행률: {progress}%")
     
-    # 현재 단계 표시 - 매핑 적용
-    areas_mapping = {
-        "인식하게 한다": "검색 노출 최적화",
-        "클릭하게 한다": "클릭율 높이는 전략",
-        "머물게 한다": "체류시간 늘리는 방법", 
-        "연락오게 한다": "문의/예약 전환율 높이기",
-        "후속 피드백 받는다": "고객 재방문 유도 전략"
-    }
-    
+    # 현재 단계 표시
     current_stage = st.session_state.current_stage
-    mapped_stage = areas_mapping.get(current_stage, current_stage)
-    st.title(f"{mapped_stage} 단계 진단")
+    st.title(f"{current_stage} 단계 진단")
     
     # 현재 단계의 질문들 표시
     questions = diagnosis_questions[current_stage]
@@ -246,101 +208,34 @@ def show_result_page():
 {report_data.get("upgrade_tips", "")}
 """
     
-    # 클린 버전 (마크다운 문법 제거)
-    clean_full_report = clean_markdown(full_report)
+    # 복사 기능
+    copy_container = st.container()
     
-    # 전체 복사 버튼 (실제 복사 기능 구현)
-    if st.button("📋 전체 보고서 복사하기", key="copy_all", help="클릭하면 전체 보고서 내용이 클립보드에 복사됩니다"):
-        st.success("✅ 전체 보고서가 클립보드에 복사되었습니다!")
-        
-        # 클립보드로 복사하는 JavaScript 코드
-        st.components.v1.html(
-            f"""
-            <textarea id="copy-content" style="position: absolute; left: -9999px;">{clean_full_report}</textarea>
-            <script>
-                function copyToClipboard() {{
-                    const copyText = document.getElementById("copy-content");
-                    copyText.select();
-                    document.execCommand("copy");
-                }}
-                // 페이지 로드 시 자동 복사 실행
-                window.onload = copyToClipboard;
-            </script>
-            """,
-            height=0
-        )
+    # 복사 버튼 (상단에 고정)
+    with copy_container:
+        if st.button("📋 전체 보고서 복사하기", key="copy_all", help="클릭하면 전체 보고서 내용을 복사할 수 있습니다"):
+            toggle_copy()
+    
+    # 복사 영역 표시 (버튼 클릭 시)
+    if st.session_state.copy_clicked:
+        with copy_container:
+            st.text_area("아래 내용을 선택하여 복사하세요 (Ctrl+A, Ctrl+C)", full_report, height=300)
+            st.info("👆 위 텍스트를 선택하고 Ctrl+A, Ctrl+C를 눌러 복사하세요!")
+            if st.button("닫기", key="close_copy"):
+                toggle_copy()
     
     # 진단 내용을 컨테이너에 담아 스크롤 가능하게 표시
     with st.container():
         # 현재 진단
         st.markdown(report_data.get("current_diagnosis", ""))
-        
-        # 현재 진단 복사 버튼
-        if st.button("📋 현재 진단 복사", key="copy_diagnosis"):
-            st.success("✅ 현재 진단 내용이 클립보드에 복사되었습니다!")
-            clean_diagnosis = clean_markdown(report_data.get("current_diagnosis", ""))
-            st.components.v1.html(
-                f"""
-                <textarea id="copy-diagnosis" style="position: absolute; left: -9999px;">{clean_diagnosis}</textarea>
-                <script>
-                    function copyDiagnosis() {{
-                        const copyText = document.getElementById("copy-diagnosis");
-                        copyText.select();
-                        document.execCommand("copy");
-                    }}
-                    window.onload = copyDiagnosis;
-                </script>
-                """,
-                height=0
-            )
-        
         st.markdown("---")
         
         # 액션 플랜
         st.markdown(report_data.get("action_plan", ""))
-        
-        # 액션 플랜 복사 버튼
-        if st.button("📋 액션 플랜 복사", key="copy_action"):
-            st.success("✅ 액션 플랜 내용이 클립보드에 복사되었습니다!")
-            clean_plan = clean_markdown(report_data.get("action_plan", ""))
-            st.components.v1.html(
-                f"""
-                <textarea id="copy-action" style="position: absolute; left: -9999px;">{clean_plan}</textarea>
-                <script>
-                    function copyAction() {{
-                        const copyText = document.getElementById("copy-action");
-                        copyText.select();
-                        document.execCommand("copy");
-                    }}
-                    window.onload = copyAction;
-                </script>
-                """,
-                height=0
-            )
-        
         st.markdown("---")
         
         # 업그레이드 팁
         st.markdown(report_data.get("upgrade_tips", ""))
-        
-        # 업그레이드 팁 복사 버튼
-        if st.button("📋 업그레이드 팁 복사", key="copy_tips"):
-            st.success("✅ 업그레이드 팁 내용이 클립보드에 복사되었습니다!")
-            clean_tips = clean_markdown(report_data.get("upgrade_tips", ""))
-            st.components.v1.html(
-                f"""
-                <textarea id="copy-tips" style="position: absolute; left: -9999px;">{clean_tips}</textarea>
-                <script>
-                    function copyTips() {{
-                        const copyText = document.getElementById("copy-tips");
-                        copyText.select();
-                        document.execCommand("copy");
-                    }}
-                    window.onload = copyTips;
-                </script>
-                """,
-                height=0
-            )
     
     # 새 진단 시작
     st.markdown("## 새 진단 시작")
@@ -359,67 +254,23 @@ def main():
     )
     
     # 사이드바
-with st.sidebar:
-    st.title("🔍 AI 마케팅 부스터")
-    st.markdown("---")
-    
-    if st.session_state.page != 'welcome':
-        if st.button("처음으로 돌아가기"):
-            reset_diagnostic()
-    
-    if st.session_state.page == 'result':
-        st.markdown("### 목차")
-        st.markdown("- [📊 현재 진단](#-현재-진단)")
-        st.markdown("- [🎯 액션 플랜](#-액션-플랜)")  
-        st.markdown("- [💡 업그레이드 팁](#-업그레이드-팁)")
+    with st.sidebar:
+        st.title("🔍 AI 마케팅 부스터")
+        st.markdown("---")
         
-        # 사이드바
-with st.sidebar:
-    st.title("🔍 AI 마케팅 부스터")
-    st.markdown("---")
-    
-    if st.session_state.page != 'welcome':
-        if st.button("처음으로 돌아가기"):
-            reset_diagnostic()
-    
-    if st.session_state.page == 'result':
-        st.markdown("### 목차")
-        st.markdown("- [📊 현재 진단](#-현재-진단)")
-        st.markdown("- [🎯 액션 플랜](#-액션-플랜)")  
-        st.markdown("- [💡 업그레이드 팁](#-업그레이드-팁)")
+        if st.session_state.page != 'welcome':
+            if st.button("처음으로 돌아가기"):
+                reset_diagnostic()
         
-        # 전체 보고서 복사 버튼 (사이드바에도 추가)
-        if st.button("📋 전체 보고서 복사", key="sidebar_copy"):
-            # report_data를 세션 상태에서 가져옴
-            if "report_data" in st.session_state and st.session_state.report_data:
-                report_data = st.session_state.report_data
-                
-                # 전체 보고서 내용 준비
-                current_diagnosis = report_data.get("current_diagnosis", "")
-                action_plan = report_data.get("action_plan", "")
-                upgrade_tips = report_data.get("upgrade_tips", "")
-                
-                full_report = f"{current_diagnosis}\n\n{action_plan}\n\n{upgrade_tips}"
-                clean_full_report = clean_markdown(full_report)
-                
-                # 복사 성공 메시지 표시
-                st.success("✅ 전체 보고서가 클립보드에 복사되었습니다!")
-                
-                # JavaScript로 클립보드에 복사
-                st.components.v1.html(
-                    f"""
-                    <textarea id="copy-sidebar" style="position: absolute; left: -9999px;">{clean_full_report}</textarea>
-                    <script>
-                        function copySidebar() {{
-                            const copyText = document.getElementById("copy-sidebar");
-                            copyText.select();
-                            document.execCommand("copy");
-                        }}
-                        window.onload = copySidebar;
-                    </script>
-                    """,
-                    height=0
-                )
+        if st.session_state.page == 'result':
+            st.markdown("### 목차")
+            st.markdown("- [📊 현재 진단](#현재-진단)")
+            st.markdown("- [🎯 액션 플랜](#액션-플랜)")  
+            st.markdown("- [💡 업그레이드 팁](#업그레이드-팁)")
+            
+            # 전체 보고서 복사 버튼 (사이드바에도 추가)
+            if st.button("📋 전체 보고서 복사", key="sidebar_copy"):
+                toggle_copy()
         
         st.markdown("---")
         st.markdown("### 개발자 정보")
@@ -438,22 +289,12 @@ with st.sidebar:
         show_result_page()
         
     # 맨 밑에 고정된 복사 버튼 추가 (결과 페이지인 경우)
-    if st.session_state.page == 'result':
-        # 전체 보고서 내용 (마크다운 문법 제거)
-        full_report = f"""
-{report_data.get("current_diagnosis", "")}
-
-{report_data.get("action_plan", "")}
-
-{report_data.get("upgrade_tips", "")}
-"""
-        clean_full_report = clean_markdown(full_report)
-        
+    if st.session_state.page == 'result' and not st.session_state.copy_clicked:
         # 고정된 위치에 복사 버튼 표시
         st.markdown(
-            f"""
+            """
             <style>
-            .floating-button {{
+            .floating-button {
                 position: fixed;
                 bottom: 20px;
                 right: 20px;
@@ -470,51 +311,18 @@ with st.sidebar:
                 box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
                 cursor: pointer;
                 border: none;
-            }}
-            .floating-button:hover {{
+            }
+            .floating-button:hover {
                 background-color: #ff2e2e;
-            }}
-            .tooltip {{
-                display: none;
-                position: fixed;
-                bottom: 90px;
-                right: 20px;
-                background-color: #333;
-                color: white;
-                padding: 5px 10px;
-                border-radius: 4px;
-                font-size: 12px;
-                z-index: 1001;
-            }}
+            }
             </style>
             
-            <div id="floating-copy-button" class="floating-button" onclick="copyFloating()">📋</div>
-            <div id="tooltip" class="tooltip">복사 완료!</div>
-            
-            <script>
-            function copyFloating() {{
-                // 클립보드에 텍스트 복사
-                const el = document.createElement('textarea');
-                el.value = `{clean_full_report}`;
-                el.setAttribute('readonly', '');
-                el.style.position = 'absolute';
-                el.style.left = '-9999px';
-                document.body.appendChild(el);
-                el.select();
-                document.execCommand('copy');
-                document.body.removeChild(el);
-                
-                // 툴팁 표시
-                const tooltip = document.getElementById('tooltip');
-                tooltip.style.display = 'block';
-                setTimeout(function() {{
-                    tooltip.style.display = 'none';
-                }}, 2000);
-            }}
-            </script>
+            <button class="floating-button" onclick="document.getElementById('copy_all').click()">
+                📋
+            </button>
             """,
             unsafe_allow_html=True
-                )
+        )
 
 if __name__ == "__main__":
-    main()
+    main() 
