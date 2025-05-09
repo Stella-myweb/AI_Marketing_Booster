@@ -12,3 +12,6 @@ matplotlib==3.8.3
 python-dotenv==1.0.0
 fpdf==1.7.2
 Pillow==10.2.0
+chromadb
+scikit-learn
+numpy
