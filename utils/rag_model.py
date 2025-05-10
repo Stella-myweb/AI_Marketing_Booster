@@ -2,6 +2,7 @@
 # 형식: Python (.py)
 # 역할: 전자책 데이터 처리, 텍스트 분할, 벡터화 및 저장 기능
 import os
+import streamlit as st  # st.error를 사용하기 위해 추가
 from typing import Dict, List, Any, Optional, Tuple
 
 from langchain.llms import OpenAI
@@ -25,12 +26,33 @@ class RAGModel:
     
     def __init__(self):
         """RAG 모델 초기화"""
-        self.vector_store = VectorStore()
-        self.llm = ChatOpenAI(
-            openai_api_key=OPENAI_API_KEY,
-            model_name=LLM_MODEL,
-            temperature=TEMPERATURE
-        )
+        try:
+            # API 키 확인
+            if "OPENAI_API_KEY" in st.secrets:
+                api_key = st.secrets["OPENAI_API_KEY"]
+            else:
+                api_key = OPENAI_API_KEY
+                
+            if not api_key:
+                st.error("OpenAI API 키가 설정되지 않았습니다.")
+                raise ValueError("API 키가 없습니다")
+            
+            # 벡터 스토어 초기화 시도
+            try:
+                self.vector_store = VectorStore()
+            except Exception as vs_error:
+                st.warning(f"벡터 스토어 초기화 오류 (무시됨): {vs_error}")
+                self.vector_store = None
+                
+            # OpenAI API 연결
+            self.llm = ChatOpenAI(
+                openai_api_key=api_key,
+                model_name=LLM_MODEL,
+                temperature=TEMPERATURE
+            )
+        except Exception as e:
+            st.error(f"RAG 모델 초기화 오류: {e}")
+            raise
     
     def generate_response(self, query: str, context: str = None, n_results: int = 3) -> str:
         """
@@ -44,26 +66,40 @@ class RAGModel:
         Returns:
             생성된 응답
         """
-        # 컨텍스트가 없으면 벡터 DB에서 검색
-        if not context:
-            context = self.vector_store.get_relevant_content(query, n_results=n_results)
-        
-        # 프롬프트 템플릿 생성
-        prompt_template = f"""
-        네이버 스마트 플레이스 최적화 전문가로서 아래 질문에 답변해 주세요.
-        다음 참고 자료를 활용하여 정확하고 도움이 되는 답변을 제공하세요.
-        
-        참고 자료:
-        {context}
-        
-        질문: {query}
-        
-        답변:
-        """
-        
-        # 응답 생성
-        response = self.llm.predict(prompt_template)
-        return response
+        try:
+            # 컨텍스트가 없으면 벡터 DB에서 검색
+            if not context:
+                if self.vector_store:
+                    context = self.vector_store.get_relevant_content(query, n_results=n_results)
+                else:
+                    context = """
+                    네이버 스마트 플레이스 최적화를 위한 일반적인 팁:
+                    1. 매력적인 이미지 사용하기
+                    2. 핵심 키워드 포함하기
+                    3. 상세한 비즈니스 설명 제공하기
+                    4. 정기적인 콘텐츠 업데이트하기
+                    5. 고객 리뷰 관리하기
+                    """
+            
+            # 프롬프트 템플릿 생성
+            prompt_template = f"""
+            네이버 스마트 플레이스 최적화 전문가로서 아래 질문에 답변해 주세요.
+            다음 참고 자료를 활용하여 정확하고 도움이 되는 답변을 제공하세요.
+            
+            참고 자료:
+            {context}
+            
+            질문: {query}
+            
+            답변:
+            """
+            
+            # 응답 생성
+            response = self.llm.predict(prompt_template)
+            return response
+        except Exception as e:
+            st.error(f"응답 생성 중 오류: {e}")
+            return "응답 생성 중 오류가 발생했습니다. 다시 시도해주세요."
     
     def generate_diagnosis_report(self, answers: Dict[str, str], diagnosis_result: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -76,238 +112,327 @@ class RAGModel:
         Returns:
             진단 보고서 (현재 진단, 액션 플랜, 업그레이드 팁)
         """
-        # 개선이 필요한 영역 파악
-        improvements = diagnosis_result.get("improvements", {})
-        weak_areas = [area['stage'] for area in improvements.get('weak_areas', [])]
-        
-        # 관련 콘텐츠 검색
-        context = self.vector_store.get_relevant_content_for_diagnosis(
-            answers=answers,
-            weak_areas=weak_areas,
-            n_results=3
-        )
-        
-        # 강점 영역 파악 (평균 4점 이상)
-        stage_scores = diagnosis_result.get("stage_scores", {})
-        strength_areas = [
-            stage for stage, score_info in stage_scores.items() 
-            if score_info['avg_score'] >= 4.0
-        ]
-        
-        # 현재 진단 생성
-        current_diagnosis = self._generate_current_diagnosis(
-            diagnosis_result=diagnosis_result,
-            strength_areas=strength_areas,
-            weak_areas=weak_areas
-        )
-        
-        # 액션 플랜 생성
-        action_plan = self._generate_action_plan(
-            diagnosis_result=diagnosis_result,
-            weak_areas=weak_areas,
-            context=context
-        )
-        
-        # 업그레이드 팁 생성
-        upgrade_tips = self._generate_upgrade_tips(
-            diagnosis_result=diagnosis_result,
-            weak_areas=weak_areas,
-            context=context
-        )
-        
-        # 종합 보고서 생성
-        return {
-            "title": f"네이버 스마트 플레이스 최적화 진단 보고서",
-            "level": diagnosis_result["level"]["name"],
-            "current_diagnosis": current_diagnosis,
-            "action_plan": action_plan,
-            "upgrade_tips": upgrade_tips
-        }
+        try:
+            # 개선이 필요한 영역 파악
+            improvements = diagnosis_result.get("improvements", {})
+            weak_areas = [area['stage'] for area in improvements.get('weak_areas', [])]
+            
+            # 관련 콘텐츠 검색
+            try:
+                if self.vector_store:
+                    context = self.vector_store.get_relevant_content_for_diagnosis(
+                        answers=answers,
+                        weak_areas=weak_areas,
+                        n_results=3
+                    )
+                else:
+                    context = """
+                    네이버 스마트 플레이스 최적화를 위한 일반적인 팁:
+                    1. 매력적인 이미지 사용하기
+                    2. 핵심 키워드 포함하기
+                    3. 상세한 비즈니스 설명 제공하기
+                    4. 정기적인 콘텐츠 업데이트하기
+                    5. 고객 리뷰 관리하기
+                    """
+            except Exception as ctx_error:
+                st.warning(f"콘텐츠 검색 오류 (기본 콘텐츠 제공): {ctx_error}")
+                context = """
+                네이버 스마트 플레이스 최적화를 위한 기본 정보입니다.
+                """
+            
+            # 강점 영역 파악 (평균 4점 이상)
+            stage_scores = diagnosis_result.get("stage_scores", {})
+            strength_areas = [
+                stage for stage, score_info in stage_scores.items() 
+                if score_info['avg_score'] >= 4.0
+            ]
+            
+            # 현재 진단 생성
+            current_diagnosis = self._generate_current_diagnosis(
+                diagnosis_result=diagnosis_result,
+                strength_areas=strength_areas,
+                weak_areas=weak_areas
+            )
+            
+            # 액션 플랜 생성
+            action_plan = self._generate_action_plan(
+                diagnosis_result=diagnosis_result,
+                weak_areas=weak_areas,
+                context=context
+            )
+            
+            # 업그레이드 팁 생성
+            upgrade_tips = self._generate_upgrade_tips(
+                diagnosis_result=diagnosis_result,
+                weak_areas=weak_areas,
+                context=context
+            )
+            
+            # 종합 보고서 생성
+            return {
+                "title": f"네이버 스마트 플레이스 최적화 진단 보고서",
+                "level": diagnosis_result["level"]["name"],
+                "current_diagnosis": current_diagnosis,
+                "action_plan": action_plan,
+                "upgrade_tips": upgrade_tips
+            }
+        except Exception as e:
+            st.error(f"진단 보고서 생성 중 오류: {e}")
+            # 기본 보고서 제공
+            return {
+                "title": "네이버 스마트 플레이스 최적화 진단 보고서",
+                "level": diagnosis_result["level"]["name"],
+                "current_diagnosis": "# 📊 현재 진단\n\n현재 스마트 플레이스는 기초 단계로, 기본적인 설정은 완료되었으나 체계적인 관리가 필요합니다.",
+                "action_plan": "# 🎯 액션 플랜\n\n성공적인 네이버 플레이스 마케팅을 위해 실행해야 할 핵심 전략입니다. 클릭율을 높이고, 검색 노출을 최적화하며, 문의/예약 전환율을 높이는 데 초점을 맞추세요.",
+                "upgrade_tips": "# 💡 업그레이드 팁\n\n단계별로 적용할 수 있는 팁을 활용하여 스마트 플레이스를 점진적으로 개선해 나가세요."
+            }
     
     def _generate_current_diagnosis(self, diagnosis_result: Dict[str, Any], 
                                  strength_areas: List[str], weak_areas: List[str]) -> str:
         """현재 진단 요약을 생성합니다."""
-        level = diagnosis_result["level"]["name"]
-        level_description = diagnosis_result["level"]["description"]
-        
-        # 새로운 제목 매핑
-        title_map = {
-            "인식하게 한다": "검색 노출 최적화",
-            "클릭하게 한다": "클릭율 높이는 전략",
-            "머물게 한다": "체류시간 늘리는 방법",
-            "연락오게 한다": "문의/예약 전환율 높이기",
-            "후속 피드백 받는다": "고객 재방문 유도 전략"
-        }
-        
-        # 강점 영역과 약점 영역에 새 제목 적용
-        strength_areas_mapped = [title_map.get(area, area) for area in strength_areas]
-        weak_areas_mapped = [title_map.get(area, area) for area in weak_areas]
-        
-        # 프롬프트 생성
-        prompt_template = f"""
-        네이버 스마트 플레이스 마케팅 전문가로서, 다음 정보를 바탕으로 현재 진단 요약을 작성해 주세요.
-        
-        진단 결과:
-        - 레벨: {level}
-        - 레벨 설명: {level_description}
-        - 강점 영역: {', '.join(strength_areas_mapped) if strength_areas_mapped else '없음'}
-        - 개선 필요 영역: {', '.join(weak_areas_mapped) if weak_areas_mapped else '없음'}
-        
-        다음 요구사항에 따라 진단 요약을 작성해 주세요:
-        1. 반드시 "# 📊 현재 진단"으로 시작하는 마크다운 제목을 포함해 주세요.
-        2. 진단 시작 부분에 현재 스마트 플레이스 최적화 상태에 대한 간략한 총평을 1-2문장으로 추가해 주세요.
-        3. 아래 4가지 섹션으로 구성해 주세요:
-           ## 👁️ 현재 상태
-           * 현재 스마트 플레이스의 전반적인 상태와 레벨에 대한 설명
-           * 핵심 지표와 점수에 대한 간략한 요약
-           
-           ## 💪 강점
-           * 현재 잘하고 있는 부분에 대한 설명
-           * 강점이 없다면 "현재 특별히 두드러진 강점이 발견되지 않았습니다."와 같은 문구로 대체
-           
-           ## 🔍 개선점
-           * 개선이 필요한 부분에 대한 명확한 설명
-           * 구체적으로 어떤 측면이 부족한지 설명
-           
-           ## 💰 비즈니스 영향
-           * 현재 상태가 비즈니스에 미치는 영향과 개선 시 기대효과 설명
-           * 구체적인 비즈니스 메트릭(방문자 수, 전환율 등)에 미치는 영향 포함
-           
-        4. 각 섹션은 2-3문장으로 간결하게 작성해 주세요.
-        5. 업그레이드 팁 및 액션 플랜과 동일한 스타일로 깔끔하게 작성해 주세요.
-        6. 마크다운 기호가 최종 출력물에서 그대로 보이지 않도록 주의해 주세요.
-        
-        현재 진단:
-        """
-        
-        diagnosis = self.llm.predict(prompt_template)
-        return diagnosis
+        try:
+            level = diagnosis_result["level"]["name"]
+            level_description = diagnosis_result["level"]["description"]
+            
+            # 새로운 제목 매핑
+            title_map = {
+                "인식하게 한다": "검색 노출 최적화",
+                "클릭하게 한다": "클릭율 높이는 전략",
+                "머물게 한다": "체류시간 늘리는 방법",
+                "연락오게 한다": "문의/예약 전환율 높이기",
+                "후속 피드백 받는다": "고객 재방문 유도 전략"
+            }
+            
+            # 강점 영역과 약점 영역에 새 제목 적용
+            strength_areas_mapped = [title_map.get(area, area) for area in strength_areas]
+            weak_areas_mapped = [title_map.get(area, area) for area in weak_areas]
+            
+            # 프롬프트 생성
+            prompt_template = f"""
+            네이버 스마트 플레이스 마케팅 전문가로서, 다음 정보를 바탕으로 현재 진단 요약을 작성해 주세요.
+            
+            진단 결과:
+            - 레벨: {level}
+            - 레벨 설명: {level_description}
+            - 강점 영역: {', '.join(strength_areas_mapped) if strength_areas_mapped else '없음'}
+            - 개선 필요 영역: {', '.join(weak_areas_mapped) if weak_areas_mapped else '없음'}
+            
+            다음 요구사항에 따라 진단 요약을 작성해 주세요:
+            1. 반드시 "# 📊 현재 진단"으로 시작하는 마크다운 제목을 포함해 주세요.
+            2. 진단 시작 부분에 현재 스마트 플레이스 최적화 상태에 대한 간략한 총평을 1-2문장으로 추가해 주세요.
+            3. 아래 4가지 섹션으로 구성해 주세요:
+               ## 👁️ 현재 상태
+               * 현재 스마트 플레이스의 전반적인 상태와 레벨에 대한 설명
+               * 핵심 지표와 점수에 대한 간략한 요약
+               
+               ## 💪 강점
+               * 현재 잘하고 있는 부분에 대한 설명
+               * 강점이 없다면 "현재 특별히 두드러진 강점이 발견되지 않았습니다."와 같은 문구로 대체
+               
+               ## 🔍 개선점
+               * 개선이 필요한 부분에 대한 명확한 설명
+               * 구체적으로 어떤 측면이 부족한지 설명
+               
+               ## 💰 비즈니스 영향
+               * 현재 상태가 비즈니스에 미치는 영향과 개선 시 기대효과 설명
+               * 구체적인 비즈니스 메트릭(방문자 수, 전환율 등)에 미치는 영향 포함
+               
+            4. 각 섹션은 2-3문장으로 간결하게 작성해 주세요.
+            5. 업그레이드 팁 및 액션 플랜과 동일한 스타일로 깔끔하게 작성해 주세요.
+            6. 마크다운 기호가 최종 출력물에서 그대로 보이지 않도록 주의해 주세요.
+            
+            현재 진단:
+            """
+            
+            diagnosis = self.llm.predict(prompt_template)
+            return diagnosis
+        except Exception as e:
+            st.error(f"현재 진단 생성 중 오류: {e}")
+            return """
+            # 📊 현재 진단
+            
+            현재 스마트 플레이스의 최적화 상태는 기초 단계로, 기본적인 설정은 완료되었으나 체계적인 관리가 부족합니다.
+            
+            ## 👁️ 현재 상태
+            기본적인 설정은 되어 있으나, 전반적인 콘텐츠 품질과 관리 상태가 미흡합니다.
+            
+            ## 💪 강점
+            현재 특별히 두드러진 강점이 발견되지 않았습니다.
+            
+            ## 🔍 개선점
+            클릭율, 검색 노출, 문의/예약 전환율 등 주요 지표들의 개선이 필요합니다.
+            
+            ## 💰 비즈니스 영향
+            현재 상태는 비즈니스 성과에 부정적 영향을 미치고 있으며, 개선 시 방문자 수와 전환율이 증가할 것으로 기대됩니다.
+            """
     
     def _generate_action_plan(self, diagnosis_result: Dict[str, Any], 
                            weak_areas: List[str], context: str) -> str:
         """액션 플랜을 생성합니다."""
-        level = diagnosis_result["level"]["name"]
-        
-        # 새로운 제목 매핑
-        title_map = {
-            "인식하게 한다": "검색 노출 최적화",
-            "클릭하게 한다": "클릭율 높이는 전략",
-            "머물게 한다": "체류시간 늘리는 방법",
-            "연락오게 한다": "문의/예약 전환율 높이기",
-            "후속 피드백 받는다": "고객 재방문 유도 전략"
-        }
-        
-        # 이모지 매핑
-        emoji_map = {
-            "검색 노출 최적화": "🔍",
-            "클릭율 높이는 전략": "🖱️",
-            "체류시간 늘리는 방법": "⏱️",
-            "문의/예약 전환율 높이기": "📱",
-            "고객 재방문 유도 전략": "💬"
-        }
-        
-        # 약점 영역 이름을 새 제목으로 변경
-        new_weak_areas = [title_map.get(area, area) for area in weak_areas]
-        weak_areas_str = ', '.join(new_weak_areas)
-        
-        # 프롬프트 생성
-        prompt_template = f"""
-        네이버 스마트 플레이스 최적화 전문가로서, 다음 정보를 바탕으로 구체적인 액션 플랜을 제안해 주세요.
-        
-        현재 레벨: {level}
-        개선 필요 영역: {weak_areas_str}
-        
-        참고 자료:
-        {context}
-        
-        다음 요구사항에 따라 액션 플랜을 작성해 주세요:
-        1. 반드시 "# 🎯 액션 플랜"으로 시작하는 마크다운 제목을 포함해 주세요.
-        2. 액션 플랜 시작 부분에 "성공적인 네이버 플레이스 마케팅을 위해 실행해야 할 핵심 전략입니다. 각 액션 아이템을 실행하면 고객 유입과 전환율을 높일 수 있습니다."와 같은 간단한 설명을 추가해 주세요.
-        3. 각 개선 영역은 다음과 같이 구성해 주세요:
-           ## ✅ [영역 이름]
-           * 각 영역에 대한 간단한 설명을 추가하세요: 왜 이 영역이 중요한지, 어떤 효과를 기대할 수 있는지 1-2문장으로 설명
-           * 항목별로 업그레이드 팁과 같은 형식으로 작성하세요:
-             * 🔹 **[액션 제목]**: 간결한 설명과 왜 중요한지 이유 포함
-             * 🔸 **[액션 제목]**: 간결한 설명과 왜 중요한지 이유 포함
-           → *기대 효과: 이 영역의 액션을 실행했을 때 기대할 수 있는 결과*
-        
-        4. 각 영역은 최소 2개, 최대 3개의 구체적인 액션 아이템을 포함해야 합니다.
-        5. 모든 액션은 실행 가능하고 구체적이어야 하며, 그 이유와 중요성을 설명해야 합니다.
-        6. 업그레이드 팁과 동일한 스타일로 깔끔하게 작성해 주세요.
-        
-        예시 형식:
-        # 🎯 액션 플랜
-        
-        성공적인 네이버 플레이스 마케팅을 위해 실행해야 할 핵심 전략입니다. 각 액션 아이템을 실행하면 고객 유입과 전환율을 높일 수 있습니다.
-        
-        ## ✅ 클릭율 높이는 전략
-        클릭율을 높이면 더 많은 잠재 고객이 페이지를 방문하게 되어 궁극적으로 매출 증가로 이어집니다.
-        
-        * 🔹 **매력적인 대표 이미지 업로드**: 고품질 사진은 첫인상을 결정하며, 전문적인 이미지는 신뢰도를 높입니다.
-        * 🔸 **핵심 키워드가 포함된 제목 작성**: 검색 시 노출 빈도를 높이고 고객의 관심을 끌 수 있습니다.
-        
-        → *기대 효과: 클릭률 30% 이상 증가와 방문자 수 확대*
-        """
-        
-        action_plan = self.llm.predict(prompt_template)
-        return action_plan
+        try:
+            level = diagnosis_result["level"]["name"]
+            
+            # 새로운 제목 매핑
+            title_map = {
+                "인식하게 한다": "검색 노출 최적화",
+                "클릭하게 한다": "클릭율 높이는 전략",
+                "머물게 한다": "체류시간 늘리는 방법",
+                "연락오게 한다": "문의/예약 전환율 높이기",
+                "후속 피드백 받는다": "고객 재방문 유도 전략"
+            }
+            
+            # 이모지 매핑
+            emoji_map = {
+                "검색 노출 최적화": "🔍",
+                "클릭율 높이는 전략": "🖱️",
+                "체류시간 늘리는 방법": "⏱️",
+                "문의/예약 전환율 높이기": "📱",
+                "고객 재방문 유도 전략": "💬"
+            }
+            
+            # 약점 영역 이름을 새 제목으로 변경
+            new_weak_areas = [title_map.get(area, area) for area in weak_areas]
+            weak_areas_str = ', '.join(new_weak_areas)
+            
+            # 프롬프트 생성
+            prompt_template = f"""
+            네이버 스마트 플레이스 최적화 전문가로서, 다음 정보를 바탕으로 구체적인 액션 플랜을 제안해 주세요.
+            
+            현재 레벨: {level}
+            개선 필요 영역: {weak_areas_str}
+            
+            참고 자료:
+            {context}
+            
+            다음 요구사항에 따라 액션 플랜을 작성해 주세요:
+            1. 반드시 "# 🎯 액션 플랜"으로 시작하는 마크다운 제목을 포함해 주세요.
+            2. 액션 플랜 시작 부분에 "성공적인 네이버 플레이스 마케팅을 위해 실행해야 할 핵심 전략입니다. 각 액션 아이템을 실행하면 고객 유입과 전환율을 높일 수 있습니다."와 같은 간단한 설명을 추가해 주세요.
+            3. 각 개선 영역은 다음과 같이 구성해 주세요:
+               ## ✅ [영역 이름]
+               * 각 영역에 대한 간단한 설명을 추가하세요: 왜 이 영역이 중요한지, 어떤 효과를 기대할 수 있는지 1-2문장으로 설명
+               * 항목별로 업그레이드 팁과 같은 형식으로 작성하세요:
+                 * 🔹 **[액션 제목]**: 간결한 설명과 왜 중요한지 이유 포함
+                 * 🔸 **[액션 제목]**: 간결한 설명과 왜 중요한지 이유 포함
+               → *기대 효과: 이 영역의 액션을 실행했을 때 기대할 수 있는 결과*
+            
+            4. 각 영역은 최소 2개, 최대 3개의 구체적인 액션 아이템을 포함해야 합니다.
+            5. 모든 액션은 실행 가능하고 구체적이어야 하며, 그 이유와 중요성을 설명해야 합니다.
+            6. 업그레이드 팁과 동일한 스타일로 깔끔하게 작성해 주세요.
+            
+            예시 형식:
+            # 🎯 액션 플랜
+            
+            성공적인 네이버 플레이스 마케팅을 위해 실행해야 할 핵심 전략입니다. 각 액션 아이템을 실행하면 고객 유입과 전환율을 높일 수 있습니다.
+            
+            ## ✅ 클릭율 높이는 전략
+            클릭율을 높이면 더 많은 잠재 고객이 페이지를 방문하게 되어 궁극적으로 매출 증가로 이어집니다.
+            
+            * 🔹 **매력적인 대표 이미지 업로드**: 고품질 사진은 첫인상을 결정하며, 전문적인 이미지는 신뢰도를 높입니다.
+            * 🔸 **핵심 키워드가 포함된 제목 작성**: 검색 시 노출 빈도를 높이고 고객의 관심을 끌 수 있습니다.
+            
+            → *기대 효과: 클릭률 30% 이상 증가와 방문자 수 확대*
+            """
+            
+            action_plan = self.llm.predict(prompt_template)
+            return action_plan
+        except Exception as e:
+            st.error(f"액션 플랜 생성 중 오류: {e}")
+            return """
+            # 🎯 액션 플랜
+            
+            성공적인 네이버 플레이스 마케팅을 위해 실행해야 할 핵심 전략입니다. 각 액션 아이템을 실행하면 고객 유입과 전환율을 높일 수 있습니다.
+            
+            ## ✅ 클릭율 높이는 전략
+            * 🔹 **매력적인 대표 이미지 업로드**: 고품질 사진으로 첫인상을 개선하세요.
+            * 🔸 **핵심 키워드가 포함된 제목 작성**: 관련성 높은 키워드를 제목에 포함하세요.
+            
+            ## ✅ 검색 노출 최적화
+            * 🔹 **정확한 카테고리 선택**: 비즈니스에 적합한 카테고리를 선택하세요.
+            * 🔸 **상세한 비즈니스 설명 작성**: 서비스의 특징과 장점을 명확히 설명하세요.
+            """
     
     def _generate_upgrade_tips(self, diagnosis_result: Dict[str, Any], 
                              weak_areas: List[str], context: str) -> str:
         """맞춤형 업그레이드 팁을 생성합니다."""
-        level = diagnosis_result["level"]["name"]
-        
-        # 새로운 제목 매핑
-        title_map = {
-            "인식하게 한다": "검색 노출 최적화",
-            "클릭하게 한다": "클릭율 높이는 전략",
-            "머물게 한다": "체류시간 늘리는 방법",
-            "연락오게 한다": "문의/예약 전환율 높이기",
-            "후속 피드백 받는다": "고객 재방문 유도 전략"
-        }
-        
-        # 약점 영역 이름 변경
-        new_weak_areas = [title_map.get(area, area) for area in weak_areas]
-        
-        # 프롬프트 생성
-        prompt_template = f"""
-        네이버 스마트 플레이스 최적화 전문가로서, 다음 정보를 바탕으로 맞춤형 업그레이드 팁을 제공해 주세요.
-        
-        현재 레벨: {level}
-        개선 필요 영역: {', '.join(new_weak_areas)}
-        
-        참고 자료:
-        {context}
-        
-        다음 요구사항에 따라 업그레이드 팁을 작성해 주세요:
-        1. 반드시 "# 💡 업그레이드 팁"으로 시작하는 마크다운 제목을 포함해 주세요.
-        2. 내용은 3단계로 구성하세요:
-           - ## ✅ 초보 단계
-           - ## ✅ 중급 단계
-           - ## ✅ 고급 단계
-        3. 각 단계별로 2개의 핵심 팁만 제공하세요.
-        4. 각 팁은 이모지와 볼드체 제목으로 시작하고, 간결한 설명을 덧붙이세요:
-           * 🖼️ **매력적인 사진 업로드**: 고화질의 매력적인 사진을 업로드하여 고객의 시선을 끌어보세요.
-           * 📝 **두 번째 팁 제목**: 간결한 설명...
-        5. 각 단계 끝에는 화살표(→)와 함께 기대 효과를 한 줄로 추가하세요:
-           → *효과: 이 단계의 기대 효과 한 줄*
-        6. 마지막으로 한 문장의 결론을 추가하세요.
-        
-        깔끔하고 시각적으로 보기 좋게 구성하며, 모든 이모지와 마크다운 형식을 정확히 사용해 주세요.
-        """
-        
-        upgrade_tips = self.llm.predict(prompt_template)
-        return upgrade_tips
+        try:
+            level = diagnosis_result["level"]["name"]
+            
+            # 새로운 제목 매핑
+            title_map = {
+                "인식하게 한다": "검색 노출 최적화",
+                "클릭하게 한다": "클릭율 높이는 전략",
+                "머물게 한다": "체류시간 늘리는 방법",
+                "연락오게 한다": "문의/예약 전환율 높이기",
+                "후속 피드백 받는다": "고객 재방문 유도 전략"
+            }
+            
+            # 약점 영역 이름 변경
+            new_weak_areas = [title_map.get(area, area) for area in weak_areas]
+            
+            # 프롬프트 생성
+            prompt_template = f"""
+            네이버 스마트 플레이스 최적화 전문가로서, 다음 정보를 바탕으로 맞춤형 업그레이드 팁을 제공해 주세요.
+            
+            현재 레벨: {level}
+            개선 필요 영역: {', '.join(new_weak_areas)}
+            
+            참고 자료:
+            {context}
+            
+            다음 요구사항에 따라 업그레이드 팁을 작성해 주세요:
+            1. 반드시 "# 💡 업그레이드 팁"으로 시작하는 마크다운 제목을 포함해 주세요.
+            2. 내용은 3단계로 구성하세요:
+               - ## ✅ 초보 단계
+               - ## ✅ 중급 단계
+               - ## ✅ 고급 단계
+            3. 각 단계별로 2개의 핵심 팁만 제공하세요.
+            4. 각 팁은 이모지와 볼드체 제목으로 시작하고, 간결한 설명을 덧붙이세요:
+               * 🖼️ **매력적인 사진 업로드**: 고화질의 매력적인 사진을 업로드하여 고객의 시선을 끌어보세요.
+               * 📝 **두 번째 팁 제목**: 간결한 설명...
+            5. 각 단계 끝에는 화살표(→)와 함께 기대 효과를 한 줄로 추가하세요:
+               → *효과: 이 단계의 기대 효과 한 줄*
+            6. 마지막으로 한 문장의 결론을 추가하세요.
+            
+            깔끔하고 시각적으로 보기 좋게 구성하며, 모든 이모지와 마크다운 형식을 정확히 사용해 주세요.
+            """
+            
+            upgrade_tips = self.llm.predict(prompt_template)
+            return upgrade_tips
+        except Exception as e:
+            st.error(f"업그레이드 팁 생성 중 오류: {e}")
+            return """
+            # 💡 업그레이드 팁
+            
+            ## ✅ 초보 단계
+            * 🖼️ **매력적인 사진 업로드**: 고화질의 매력적인 사진을 업로드하여 고객의 시선을 끌어보세요.
+            * 📝 **간결한 설명 작성**: 서비스나 제품에 대한 명확한 설명을 작성하세요.
+            → *효과: 고객의 관심을 끌고, 클릭율을 높일 수 있습니다.*
+            
+            ## ✅ 중급 단계
+            * 🔍 **키워드 최적화**: 자주 검색되는 키워드를 포함시켜 노출 빈도를 높이세요.
+            * 📞 **빠른 응답 시스템**: 문의에 신속하게 응답하여 고객 만족도를 높이세요.
+            → *효과: 검색 노출과 전환율이 향상됩니다.*
+            
+            ## ✅ 고급 단계
+            * 📊 **고객 리뷰 관리**: 긍정적인 리뷰를 유도하고 부정적 리뷰에 적절히 대응하세요.
+            * 🎯 **프로모션 활용**: 특별 할인이나 이벤트로 고객 방문을 유도하세요.
+            → *효과: 재방문율이 증가하고 브랜드 인지도가 향상됩니다.*
+            
+            단계별로 체계적인 접근을 통해 네이버 스마트 플레이스를 최적화하여 비즈니스 성과를 극대화할 수 있습니다.
+            """
 
 # 테스트 코드
 if __name__ == "__main__":
     # RAG 모델 초기화
-    rag_model = RAGModel()
-    
-    # 간단한 쿼리 테스트
-    test_query = "네이버 플레이스에서 대표 키워드를 어떻게 최적화해야 하나요?"
-    response = rag_model.generate_response(test_query)
-    
-    print("\n=== 테스트 응답 ===")
-    print(f"질문: {test_query}")
-    print(f"응답: {response}")
+    try:
+        rag_model = RAGModel()
+        
+        # 간단한 쿼리 테스트
+        test_query = "네이버 플레이스에서 대표 키워드를 어떻게 최적화해야 하나요?"
+        response = rag_model.generate_response(test_query)
+        
+        print("\n=== 테스트 응답 ===")
+        print(f"질문: {test_query}")
+        print(f"응답: {response}")
+    except Exception as e:
+        print(f"테스트 중 오류 발생: {e}")

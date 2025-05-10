@@ -16,6 +16,25 @@ from utils.rag_model import RAGModel
 # 설정 로드
 from config import APP_TITLE, APP_DESCRIPTION
 
+# 디버깅 정보
+st.sidebar.write("### 디버깅 정보")
+if "OPENAI_API_KEY" in st.secrets:
+    st.sidebar.success("API 키 설정됨 (secrets)")
+elif os.getenv("OPENAI_API_KEY"):
+    st.sidebar.success("API 키 설정됨 (환경변수)")
+else:
+    st.sidebar.error("API 키 없음")
+
+# 파일 경로 확인
+current_dir = os.path.dirname(os.path.abspath(__file__))
+data_dir = os.path.join(current_dir, "data")
+ebook_path = os.path.join(data_dir, "ebook_content.txt")
+
+if os.path.exists(ebook_path):
+    st.sidebar.success(f"ebook_content.txt 파일 존재")
+else:
+    st.sidebar.error(f"ebook_content.txt 파일 없음") 
+
 # 전역 변수 설정
 if 'answers' not in st.session_state:
     st.session_state.answers = {}
@@ -74,24 +93,67 @@ def prev_stage():
 
 def calculate_diagnosis():
     """진단 결과를 계산하고 보고서 데이터를 생성합니다."""
-    # 진단 결과 계산
-    diagnosis_result = calculate_score(st.session_state.answers)
-    
-    # 개선 제안 생성
-    improvements = suggest_improvements(diagnosis_result)
-    diagnosis_result['improvements'] = improvements
-    
-    # 세션 상태에 저장
-    st.session_state.diagnosis_result = diagnosis_result
-    
-    # RAG 모델을 사용해 보고서 데이터 생성
-    with st.spinner("진단 보고서를 생성하고 있습니다..."):
-        rag_model = RAGModel()
-        report_data = rag_model.generate_diagnosis_report(
-            answers=st.session_state.answers,
-            diagnosis_result=diagnosis_result
-        )
-        st.session_state.report_data = report_data
+    try:
+        # 진단 결과 계산
+        diagnosis_result = calculate_score(st.session_state.answers)
+        
+        # 개선 제안 생성
+        improvements = suggest_improvements(diagnosis_result)
+        diagnosis_result['improvements'] = improvements
+        
+        # 세션 상태에 저장
+        st.session_state.diagnosis_result = diagnosis_result
+        
+        # RAG 모델 사용 전 API 키 확인
+        if "OPENAI_API_KEY" in st.secrets:
+            api_key = st.secrets["OPENAI_API_KEY"]
+        else:
+            api_key = os.getenv("OPENAI_API_KEY")
+            
+        if not api_key:
+            st.error("OpenAI API 키가 설정되지 않았습니다.")
+            st.session_state.report_data = {
+                "title": "진단 보고서",
+                "level": diagnosis_result["level"]["name"],
+                "current_diagnosis": "API 키 오류로 자세한 진단을 생성할 수 없습니다.",
+                "action_plan": "API 키를 설정해주세요.",
+                "upgrade_tips": "API 키 설정 후 다시 시도해주세요."
+            }
+            return
+        
+        # 간소화된 보고서 생성 로직
+        try:
+            # RAG 모델 초기화 시도
+            with st.spinner("진단 보고서를 생성하고 있습니다..."):
+                rag_model = RAGModel()
+                report_data = rag_model.generate_diagnosis_report(
+                    answers=st.session_state.answers,
+                    diagnosis_result=diagnosis_result
+                )
+                st.session_state.report_data = report_data
+        except Exception as inner_e:
+            st.error(f"보고서 생성 중 오류: {inner_e}")
+            # 기본 보고서 제공
+            st.session_state.report_data = {
+                "title": "네이버 스마트 플레이스 최적화 진단 보고서",
+                "level": diagnosis_result["level"]["name"],
+                "current_diagnosis": "현재 스마트 플레이스는 기초 단계로, 기본적인 설정은 완료되었으나 체계적인 관리가 필요합니다.",
+                "action_plan": "클릭율, 문의/예약 전환율, 검색 노출 최적화가 필요합니다.",
+                "upgrade_tips": "매력적인 이미지 업로드, 정확한 키워드 사용, 정기적인 업데이트가 중요합니다."
+            }
+    except Exception as e:
+        st.error(f"진단 계산 중 오류 발생: {e}")
+        # 기본 결과 제공
+        st.session_state.diagnosis_result = {
+            "level": {"name": "오류", "description": "진단 중 오류가 발생했습니다."}
+        }
+        st.session_state.report_data = {
+            "title": "오류 발생",
+            "level": "오류",
+            "current_diagnosis": "진단 계산 중 오류가 발생했습니다.",
+            "action_plan": "다시 시도해주세요.",
+            "upgrade_tips": "문제가 지속되면 개발자에게 문의하세요."
+        }
 
 def toggle_copy():
     """복사 상태를 토글합니다."""
@@ -245,84 +307,87 @@ def show_result_page():
 # 메인 앱 구성
 def main():
     """메인 애플리케이션 실행"""
-    # 페이지 설정
-    st.set_page_config(
-        page_title=APP_TITLE,
-        page_icon="🔍",
-        layout="wide",
-        initial_sidebar_state="expanded"
-    )
-    
-    # 사이드바
-    with st.sidebar:
-        st.title("🔍 AI 마케팅 부스터")
-        st.markdown("---")
-        
-        if st.session_state.page != 'welcome':
-            if st.button("처음으로 돌아가기"):
-                reset_diagnostic()
-        
-        if st.session_state.page == 'result':
-            st.markdown("### 목차")
-            st.markdown("- [📊 현재 진단](#현재-진단)")
-            st.markdown("- [🎯 액션 플랜](#액션-플랜)")  
-            st.markdown("- [💡 업그레이드 팁](#업그레이드-팁)")
-            
-            # 전체 보고서 복사 버튼 (사이드바에도 추가)
-            if st.button("📋 전체 보고서 복사", key="sidebar_copy"):
-                toggle_copy()
-        
-        st.markdown("---")
-        st.markdown("### 개발자 정보")
-        st.markdown("스마트 플레이스 최적화 컨설팅")
-        st.markdown("연락처: stella.cholong.jung@gmail.com")
-        
-        st.markdown("---")
-        st.markdown("© 2025 스마트 플레이스 최적화 컨설팅")
-    
-    # 페이지 표시
-    if st.session_state.page == 'welcome':
-        show_welcome_page()
-    elif st.session_state.page == 'diagnostic':
-        show_diagnostic_page()
-    elif st.session_state.page == 'result':
-        show_result_page()
-        
-    # 맨 밑에 고정된 복사 버튼 추가 (결과 페이지인 경우)
-    if st.session_state.page == 'result' and not st.session_state.copy_clicked:
-        # 고정된 위치에 복사 버튼 표시
-        st.markdown(
-            """
-            <style>
-            .floating-button {
-                position: fixed;
-                bottom: 20px;
-                right: 20px;
-                z-index: 1000;
-                border-radius: 50%;
-                width: 60px;
-                height: 60px;
-                font-size: 24px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                background-color: #ff4b4b;
-                color: white;
-                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-                cursor: pointer;
-                border: none;
-            }
-            .floating-button:hover {
-                background-color: #ff2e2e;
-            }
-            </style>
-            
-            <button class="floating-button" onclick="document.getElementById('copy_all').click()">
-                📋
-            </button>
-            """,
-            unsafe_allow_html=True
+    try:
+        # 페이지 설정
+        st.set_page_config(
+            page_title=APP_TITLE,
+            page_icon="🔍",
+            layout="wide",
+            initial_sidebar_state="expanded"
         )
+        
+        # 사이드바
+        with st.sidebar:
+            st.title("🔍 AI 마케팅 부스터")
+            st.markdown("---")
+            
+            if st.session_state.page != 'welcome':
+                if st.button("처음으로 돌아가기"):
+                    reset_diagnostic()
+            
+            if st.session_state.page == 'result':
+                st.markdown("### 목차")
+                st.markdown("- [📊 현재 진단](#현재-진단)")
+                st.markdown("- [🎯 액션 플랜](#액션-플랜)")  
+                st.markdown("- [💡 업그레이드 팁](#업그레이드-팁)")
+                
+                # 전체 보고서 복사 버튼 (사이드바에도 추가)
+                if st.button("📋 전체 보고서 복사", key="sidebar_copy"):
+                    toggle_copy()
+            
+            st.markdown("---")
+            st.markdown("### 개발자 정보")
+            st.markdown("스마트 플레이스 최적화 컨설팅")
+            st.markdown("연락처: stella.cholong.jung@gmail.com")
+            
+            st.markdown("---")
+            st.markdown("© 2025 스마트 플레이스 최적화 컨설팅")
+        
+        # 페이지 표시
+        if st.session_state.page == 'welcome':
+            show_welcome_page()
+        elif st.session_state.page == 'diagnostic':
+            show_diagnostic_page()
+        elif st.session_state.page == 'result':
+            show_result_page()
+            
+        # 맨 밑에 고정된 복사 버튼 추가 (결과 페이지인 경우)
+        if st.session_state.page == 'result' and not st.session_state.copy_clicked:
+            # 고정된 위치에 복사 버튼 표시
+            st.markdown(
+                """
+                <style>
+                .floating-button {
+                    position: fixed;
+                    bottom: 20px;
+                    right: 20px;
+                    z-index: 1000;
+                    border-radius: 50%;
+                    width: 60px;
+                    height: 60px;
+                    font-size: 24px;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    background-color: #ff4b4b;
+                    color: white;
+                    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+                    cursor: pointer;
+                    border: none;
+                }
+                .floating-button:hover {
+                    background-color: #ff2e2e;
+                }
+                </style>
+                
+                <button class="floating-button" onclick="document.getElementById('copy_all').click()">
+                    📋
+                </button>
+                """,
+                unsafe_allow_html=True
+            )
+    except Exception as e:
+        st.error(f"애플리케이션 실행 중 오류 발생: {e}")
 
 if __name__ == "__main__":
-    main() 
+    main()
