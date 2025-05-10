@@ -411,3 +411,49 @@ except Exception as e:
     rag_model_available = False 
 if __name__ == "__main__":
     main()
+
+
+# 메인 앱 코드 아래에 추가
+if __name__ == "__main__":
+    # 메인 앱 코드...
+    
+    # 디버깅 모드 추가 (쿼리 파라미터로 활성화)
+    params = st.experimental_get_query_params()
+    if "debug" in params:
+        st.write("## 디버깅 모드")
+        st.write("### 벡터 스토어 테스트")
+        
+        if st.button("벡터 스토어 재생성"):
+            with st.spinner("벡터 스토어 재생성 중..."):
+                vector_store = VectorStore(force_reload=True)
+                st.success("벡터 스토어가 재생성되었습니다!")
+        
+        test_query = st.text_input("테스트 쿼리", "네이버 플레이스 클릭률 높이기")
+        if st.button("검색 테스트"):
+            vector_store = VectorStore()
+            results = vector_store.raw_similarity_search(test_query, k=2)
+            for i, doc in enumerate(results):
+                st.write(f"결과 {i+1}:")
+                st.write(doc.page_content[:300] + "...")
+        
+        st.write("### 진단 보고서 테스트")
+        if st.button("테스트 보고서 생성"):
+            rag_model = RAGModel()
+            test_result = {
+                "level": {"name": "기본", "description": "기본적인 설정이 완료되었습니다."},
+                "improvements": {
+                    "weak_areas": [
+                        {"stage": "클릭하게 한다", "score": 2},
+                        {"stage": "인식하게 한다", "score": 3}
+                    ]
+                }
+            }
+            test_answers = {"q1": "네", "q2": "아니오"}
+            
+            report = rag_model.generate_diagnosis_report(test_answers, test_result)
+            
+            st.write("### 보고서 결과")
+            st.write(report["title"])
+            st.markdown(report["summary"])
+            st.markdown(report["current_diagnosis"])
+            st.markdown(report["action_plan"])
