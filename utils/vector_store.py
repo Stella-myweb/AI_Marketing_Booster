@@ -1,5 +1,5 @@
 # utils/vector_store.py에 추가할 메소드
-
+import streamlit as st 
 def raw_similarity_search(self, query: str, k: int = 5):
     """
     쿼리와 유사한 원본 문서를 검색합니다.
@@ -12,21 +12,24 @@ def raw_similarity_search(self, query: str, k: int = 5):
         유사한 문서 객체 리스트
     """
     try:
+        if not query:
+            return []
+            
         # 벡터 스토어에서 유사한 문서 검색
         docs = self.vectorstore.similarity_search(query, k=k)
         return docs
     except Exception as e:
         st.error(f"문서 검색 오류: {e}")
+        # 오류 발생 시 빈 리스트 반환
         return []
 
-def get_relevant_content_for_diagnosis(self, answers: Dict[str, str], 
-                                     weak_areas: List[str], n_results: int = 3) -> str:
+def get_relevant_content_for_diagnosis(self, answers, weak_areas, n_results: int = 3) -> str:
     """
     진단 결과에 맞는 콘텐츠를 검색합니다.
     
     Args:
-        answers: 사용자 응답
-        weak_areas: 개선이 필요한 영역
+        answers: 사용자 응답 (딕셔너리)
+        weak_areas: 개선이 필요한 영역 (리스트)
         n_results: 반환할 검색 결과 수
         
     Returns:
@@ -44,6 +47,10 @@ def get_relevant_content_for_diagnosis(self, answers: Dict[str, str],
         
         # 약점 영역별로 맞춤 쿼리 생성 및 검색
         all_contents = []
+        
+        # weak_areas가 빈 리스트이거나 None인 경우 처리
+        if not weak_areas:
+            return "개선 필요 영역이 확인되지 않았습니다."
         
         for area in weak_areas[:2]:  # 상위 2개 영역에 집중
             area_term = title_map.get(area, area)
@@ -63,4 +70,4 @@ def get_relevant_content_for_diagnosis(self, answers: Dict[str, str],
         return combined_content
     except Exception as e:
         st.error(f"진단 콘텐츠 검색 오류: {e}")
-        return "콘텐츠 검색 중 오류가 발생했습니다." 
+        return "콘텐츠 검색 중 오류가 발생했습니다."  
