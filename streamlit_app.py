@@ -8,6 +8,16 @@ import streamlit as st
 from datetime import datetime
 from typing import Dict, List, Any
 
+# 페이지 설정 - 가장 먼저 호출되어야 함
+st.set_page_config(
+    page_title="AI 마케팅 부스터",
+    page_icon="🔍",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+
+
 # 자체 모듈 임포트
 from utils.questions import diagnosis_questions, calculate_score, suggest_improvements
 from utils.vector_store import VectorStore
@@ -15,6 +25,8 @@ from utils.rag_model import RAGModel
 
 # 설정 로드
 from config import APP_TITLE, APP_DESCRIPTION
+
+# 나머지 코드는 그대로 유지... 
 
 # 디버깅 정보
 st.sidebar.write("### 디버깅 정보")
@@ -309,12 +321,7 @@ def main():
     """메인 애플리케이션 실행"""
     try:
         # 페이지 설정
-        st.set_page_config(
-            page_title=APP_TITLE,
-            page_icon="🔍",
-            layout="wide",
-            initial_sidebar_state="expanded"
-        )
+        
         
         # 사이드바
         with st.sidebar:
