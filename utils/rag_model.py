@@ -1,9 +1,10 @@
-# utils/rag_model.py - 벡터 DB 관련 기능
+# utils/rag_model.py
 import os
 import streamlit as st
 from typing import Dict, List, Any
 
-from langchain.chat_models import ChatOpenAI
+# 임포트 경로 수정
+from langchain_openai import ChatOpenAI  # 임포트 경로 수정
 from langchain.schema.document import Document
 
 # 자체 모듈 임포트
@@ -39,11 +40,12 @@ class RAGModel:
                 st.warning(f"벡터 스토어 초기화 오류: {e}. 일부 기능이 제한될 수 있습니다.")
                 self.vector_store = None
                 
-            # OpenAI API 연결
+            # OpenAI API 연결 - proxies 인수 제거하고 경로 수정
             self.llm = ChatOpenAI(
                 openai_api_key=api_key,
                 model_name=LLM_MODEL,
                 temperature=TEMPERATURE
+                # proxies 파라미터 제거
             )
         except Exception as e:
             st.error(f"RAG 모델 초기화 오류: {e}")
@@ -55,6 +57,7 @@ class RAGModel:
                     openai_api_key=api_key,
                     model_name=LLM_MODEL,
                     temperature=TEMPERATURE
+                    # proxies 파라미터 제거
                 )
             except Exception:
                 self.llm = None
@@ -119,18 +122,6 @@ class RAGModel:
             level = diagnosis_result["level"]["name"]
             improvements = diagnosis_result.get("improvements", {})
             weak_areas = [area['stage'] for area in improvements.get('weak_areas', [])]
-            
-            # 관련 콘텐츠 검색
-            context = ""
-            if self.vector_store:
-                try:
-                    context = self.vector_store.get_relevant_content_for_diagnosis(
-                        answers=answers,
-                        weak_areas=weak_areas,
-                        n_results=3
-                    )
-                except Exception as e:
-                    st.warning(f"콘텐츠 검색 오류: {e}")
             
             # 간결한 보고서 생성
             title_map = {
