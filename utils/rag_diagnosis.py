@@ -12,90 +12,52 @@ class DiagnosisReportGenerator:
         self.llm = llm
         self.vector_store = vector_store
     
-    def generate_report(self, answers: Dict[str, str], diagnosis_result: Dict[str, Any]) -> Dict[str, Any]:
-        """자가진단 결과를 바탕으로 실용적인 진단 보고서를 생성합니다."""
-        try:
-            # 기본 데이터 추출
-            level = diagnosis_result["level"]["name"]
-            improvements = diagnosis_result.get("improvements", {})
-            weak_areas = [area['stage'] for area in improvements.get('weak_areas', [])]
-            
-            # 이북 데이터 기반 관련 콘텐츠 검색 (각 영역별로)
-            area_contexts = {}
-            if self.vector_store:
-                for area in weak_areas:
-                    try:
-                        query = f"네이버 스마트 플레이스 {area} 전략과 성공 사례"
-                        area_contexts[area] = self.vector_store.get_relevant_content(query, n_results=2)
-                    except Exception as e:
-                        st.warning(f"'{area}' 영역 콘텐츠 검색 오류: {e}")
-            
-            # 영역별 명칭 매핑
-            title_map = {
-                "인식하게 한다": "검색 노출 최적화",
-                "클릭하게 한다": "클릭율 높이는 전략",
-                "머물게 한다": "체류시간 늘리는 방법",
-                "연락오게 한다": "문의/예약 전환율 높이기",
-                "후속 피드백 받는다": "고객 재방문 유도 전략"
-            }
-            
-            # 현재 진단 생성 - 이북 데이터 기반
-            current_diagnosis = self._generate_data_driven_diagnosis(
-                diagnosis_result, 
-                weak_areas, 
-                area_contexts
-            )
-            
-            # 액션 플랜 생성 - 실행 가능한 구체적 전략
-            action_plan = self._generate_actionable_plan(
-                diagnosis_result, 
-                weak_areas, 
-                area_contexts
-            )
-            
-            # 업그레이드 팁 생성 - 차별화 전략과 구체적 사례
-            upgrade_tips = self._generate_advanced_tips(
-                diagnosis_result, 
-                weak_areas, 
-                area_contexts
-            )
-            
-            # 새로운 형식의 종합 요약 생성
-            summary = f"""
-            # 📑 네이버 스마트 플레이스 최적화 인사이트
-            
-            **현재 상태**: {level} 단계의 스마트 플레이스 프로필
-            
-            **집중 개선 영역**: 
-            {', '.join([title_map.get(area, area) for area in weak_areas[:2]])}
-            
-            **차별화 포인트**:
-            1. *{title_map.get(weak_areas[0], '기본') if weak_areas else '기본'}*에서 경쟁사 대비 독특한 전략 적용
-            2. 실제 사례 기반의 검증된 최적화 방법론 
-            3. 단계별 실행 가능한 구체적 액션 아이템
-            """
-            
-            # 종합 보고서 반환
-            return {
-                "title": f"네이버 스마트 플레이스 최적화 전략 가이드",
-                "level": level,
-                "summary": summary,
-                "current_diagnosis": current_diagnosis,
-                "action_plan": action_plan, 
-                "upgrade_tips": upgrade_tips
-            }
-            
-        except Exception as e:
-            st.error(f"진단 보고서 생성 중 오류: {e}")
-            # 기본 보고서 제공
-            return {
-                "title": "네이버 스마트 플레이스 최적화 전략 가이드",
-                "level": diagnosis_result.get("level", {}).get("name", "기본"),
-                "summary": "# 📑 네이버 스마트 플레이스 최적화 인사이트\n\n실용적인 최적화 전략과 차별화 방안이 필요합니다.",
-                "current_diagnosis": "# 📊 현재 상황 분석\n\n검색 노출, 클릭율, 전환율 개선이 필요한 상태입니다.",
-                "action_plan": "# 🎯 실행 전략\n\n핵심 키워드 최적화, 이미지 품질 향상, 리뷰 관리 시스템 구축을 단계적으로 실행하세요.",
-                "upgrade_tips": "# 💡 차별화 전략\n\n경쟁사와 차별화된 시각적 요소, 스토리텔링, 고객 경험 전략을 개발하세요."
-            }
+    # rag_diagnosis.py에서 확인
+def generate_report(self, answers, diagnosis_result):
+    """
+    자가진단 결과를 바탕으로 실용적인 전략 가이드를 생성합니다.
+    이북 데이터 기반의 실제 사례와 차별화된 전략을 제공합니다.
+    """
+    try:
+        # 기존 로직...
+        
+        # 테스트를 위한 로그 추가
+        st.write("새로운 진단 보고서 생성 로직 실행 중...")
+        
+        # 이북 데이터 기반 현재 상황 분석
+        current_diagnosis = self._generate_data_driven_diagnosis(
+            diagnosis_result, weak_areas, area_contexts
+        )
+        
+        # 실행 가능한 액션 플랜
+        action_plan = self._generate_actionable_plan(
+            diagnosis_result, weak_areas, area_contexts
+        )
+        
+        # 차별화 전략과 고급 팁
+        upgrade_tips = self._generate_advanced_tips(
+            diagnosis_result, weak_areas, area_contexts
+        )
+        
+        # 종합 보고서 반환
+        return {
+            "title": f"네이버 스마트 플레이스 최적화 전략 가이드 (V2)",  # 버전 표시 추가
+            "level": level,
+            "summary": summary,
+            "current_diagnosis": current_diagnosis,
+            "action_plan": action_plan, 
+            "upgrade_tips": upgrade_tips
+        }
+    except Exception as e:
+        st.error(f"진단 보고서 생성 중 오류: {e}")
+        return {
+            "title": "오류가 발생했습니다",
+            "level": "오류",
+            "summary": f"# 📑 오류 발생\n\n{str(e)}",
+            "current_diagnosis": "# 📊 현재 상황 분석\n\n오류로 인해 분석을 생성할 수 없습니다.",
+            "action_plan": "# 🎯 실행 전략\n\n오류로 인해 전략을 생성할 수 없습니다.",
+            "upgrade_tips": "# 💡 차별화 전략\n\n오류로 인해 전략을 생성할 수 없습니다."
+        }
 
     def _generate_data_driven_diagnosis(self, diagnosis_result: Dict[str, Any], 
                                       weak_areas: List[str], 
