@@ -36,12 +36,12 @@ class RAGModel:
             if not api_key:
                 st.error("OpenAI API 키가 설정되지 않았습니다.")
                 raise ValueError("API 키가 없습니다")
-            
+                
             # 벡터 스토어 초기화 시도
             try:
                 self.vector_store = VectorStore()
-            except Exception as vs_error:
-                st.warning(f"벡터 스토어 초기화 오류 (무시됨): {vs_error}")
+            except Exception as e:
+                st.warning(f"벡터 스토어 초기화 오류: {e}. 일부 기능이 제한될 수 있습니다.")
                 self.vector_store = None
                 
             # OpenAI API 연결
@@ -52,7 +52,17 @@ class RAGModel:
             )
         except Exception as e:
             st.error(f"RAG 모델 초기화 오류: {e}")
-            raise
+            self.vector_store = None
+            # 기본 LLM 초기화 시도
+            try:
+                api_key = st.secrets.get("OPENAI_API_KEY") or OPENAI_API_KEY
+                self.llm = ChatOpenAI(
+                    openai_api_key=api_key,
+                    model_name=LLM_MODEL,
+                    temperature=TEMPERATURE
+                )
+            except Exception:
+                self.llm = None
     
     def generate_response(self, query: str, context: str = None, n_results: int = 3) -> str:
         """
@@ -67,6 +77,9 @@ class RAGModel:
             생성된 응답
         """
         try:
+            if self.llm is None:
+                return "모델이 초기화되지 않았습니다. API 키를 확인해주세요."
+                
             # 컨텍스트가 없으면 벡터 DB에서 검색
             if not context:
                 if self.vector_store:
@@ -113,6 +126,9 @@ class RAGModel:
             진단 보고서 (현재 진단, 액션 플랜, 업그레이드 팁)
         """
         try:
+            if self.llm is None:
+                raise ValueError("모델이 초기화되지 않았습니다.")
+                
             # 개선이 필요한 영역 파악
             improvements = diagnosis_result.get("improvements", {})
             weak_areas = [area['stage'] for area in improvements.get('weak_areas', [])]
@@ -179,9 +195,10 @@ class RAGModel:
         except Exception as e:
             st.error(f"진단 보고서 생성 중 오류: {e}")
             # 기본 보고서 제공
+            level = diagnosis_result.get("level", {}).get("name", "기본")
             return {
                 "title": "네이버 스마트 플레이스 최적화 진단 보고서",
-                "level": diagnosis_result["level"]["name"],
+                "level": level,
                 "current_diagnosis": "# 📊 현재 진단\n\n현재 스마트 플레이스는 기초 단계로, 기본적인 설정은 완료되었으나 체계적인 관리가 필요합니다.",
                 "action_plan": "# 🎯 액션 플랜\n\n성공적인 네이버 플레이스 마케팅을 위해 실행해야 할 핵심 전략입니다. 클릭율을 높이고, 검색 노출을 최적화하며, 문의/예약 전환율을 높이는 데 초점을 맞추세요.",
                 "upgrade_tips": "# 💡 업그레이드 팁\n\n단계별로 적용할 수 있는 팁을 활용하여 스마트 플레이스를 점진적으로 개선해 나가세요."
@@ -191,6 +208,9 @@ class RAGModel:
                                  strength_areas: List[str], weak_areas: List[str]) -> str:
         """현재 진단 요약을 생성합니다."""
         try:
+            if self.llm is None:
+                raise ValueError("모델이 초기화되지 않았습니다.")
+                
             level = diagnosis_result["level"]["name"]
             level_description = diagnosis_result["level"]["description"]
             
@@ -270,6 +290,9 @@ class RAGModel:
                            weak_areas: List[str], context: str) -> str:
         """액션 플랜을 생성합니다."""
         try:
+            if self.llm is None:
+                raise ValueError("모델이 초기화되지 않았습니다.")
+                
             level = diagnosis_result["level"]["name"]
             
             # 새로운 제목 매핑
@@ -355,6 +378,9 @@ class RAGModel:
                              weak_areas: List[str], context: str) -> str:
         """맞춤형 업그레이드 팁을 생성합니다."""
         try:
+            if self.llm is None:
+                raise ValueError("모델이 초기화되지 않았습니다.")
+                
             level = diagnosis_result["level"]["name"]
             
             # 새로운 제목 매핑
@@ -423,7 +449,6 @@ class RAGModel:
 
 # 테스트 코드
 if __name__ == "__main__":
-    # RAG 모델 초기화
     try:
         rag_model = RAGModel()
         

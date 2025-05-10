@@ -388,6 +388,19 @@ def main():
             )
     except Exception as e:
         st.error(f"애플리케이션 실행 중 오류 발생: {e}")
+# streamlit_app.py에서 vector_store 임포트 부분 수정
+try:
+    from utils.vector_store import VectorStore
+    vector_store_available = True
+except Exception as e:
+    st.sidebar.error(f"VectorStore 임포트 오류: {e}")
+    vector_store_available = False
 
+try:
+    from utils.rag_model import RAGModel
+    rag_model_available = True
+except Exception as e:
+    st.sidebar.error(f"RAGModel 임포트 오류: {e}")
+    rag_model_available = False 
 if __name__ == "__main__":
     main()
