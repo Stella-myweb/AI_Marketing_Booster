@@ -28,24 +28,24 @@ from config import APP_TITLE, APP_DESCRIPTION
 
 # 나머지 코드는 그대로 유지... 
 
-# 디버깅 정보
-st.sidebar.write("### 디버깅 정보")
-if "OPENAI_API_KEY" in st.secrets:
-    st.sidebar.success("API 키 설정됨 (secrets)")
-elif os.getenv("OPENAI_API_KEY"):
-    st.sidebar.success("API 키 설정됨 (환경변수)")
-else:
-    st.sidebar.error("API 키 없음")
+# # 디버깅 정보
+# st.sidebar.write("### 디버깅 정보")
+# if "OPENAI_API_KEY" in st.secrets:
+#     st.sidebar.success("API 키 설정됨 (secrets)")
+# elif os.getenv("OPENAI_API_KEY"):
+#     st.sidebar.success("API 키 설정됨 (환경변수)")
+# else:
+#     st.sidebar.error("API 키 없음")
 
-# 파일 경로 확인
-current_dir = os.path.dirname(os.path.abspath(__file__))
-data_dir = os.path.join(current_dir, "data")
-ebook_path = os.path.join(data_dir, "ebook_content.txt")
+# # 파일 경로 확인
+# current_dir = os.path.dirname(os.path.abspath(__file__))
+# data_dir = os.path.join(current_dir, "data")
+# ebook_path = os.path.join(data_dir, "ebook_content.txt")
 
-if os.path.exists(ebook_path):
-    st.sidebar.success(f"ebook_content.txt 파일 존재")
-else:
-    st.sidebar.error(f"ebook_content.txt 파일 없음") 
+# if os.path.exists(ebook_path):
+#     st.sidebar.success(f"ebook_content.txt 파일 존재")
+# else:
+#     st.sidebar.error(f"ebook_content.txt 파일 없음")
 
 # 전역 변수 설정
 if 'answers' not in st.session_state:
