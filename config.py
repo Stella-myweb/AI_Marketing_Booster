@@ -26,4 +26,9 @@ EBOOK_PATH = os.path.join(DATA_DIR, "ebook_content.txt")
 
 # 앱 설정
 APP_TITLE = "AI 마케팅 부스터"
-APP_DESCRIPTION = "마케팅 효과를 AI로 진단하고 개선하는 도구" 
+APP_DESCRIPTION = "마케팅 효과를 AI로 진단하고 개선하는 도구"
+
+# PDF 보고서용 추가 설정
+REPORT_TITLE = "네이버 스마트 플레이스 최적화 진단 보고서"
+COMPANY_NAME = "스마트 플레이스 최적화 컨설팅"
+LOGO_PATH = os.path.join(PROJECT_ROOT, "assets", "logo.png")  # 실제 로고 경로에 맞게 수정 
