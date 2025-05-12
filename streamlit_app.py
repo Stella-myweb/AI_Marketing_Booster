@@ -10,6 +10,7 @@ from typing import Dict, List, Any
 from utils.pdf_generator import PDFGenerator
 from io import BytesIO
 import re
+import logging
 
 # 페이지 설정 - 가장 먼저 호출되어야 함
 st.set_page_config(
@@ -146,18 +147,18 @@ def calculate_diagnosis():
                     diagnosis_result=diagnosis_result
                 )
                 st.session_state.report_data = report_data
-        except Exception as inner_e:
-            st.error(f"보고서 생성 중 오류: {inner_e}")
+        except Exception as e:
+            logging.exception(f"진단 보고서 생성 중 오류: {e}")
             # 기본 보고서 제공
             st.session_state.report_data = {
-                "title": "네이버 스마트 플레이스 최적화 진단 보고서",
-                "level": diagnosis_result["level"]["name"],
-                "current_diagnosis": "현재 스마트 플레이스는 기초 단계로, 기본적인 설정은 완료되었으나 체계적인 관리가 필요합니다.",
-                "action_plan": "클릭율, 문의/예약 전환율, 검색 노출 최적화가 필요합니다.",
-                "upgrade_tips": "매력적인 이미지 업로드, 정확한 키워드 사용, 정기적인 업데이트가 중요합니다."
+                "title": "네이버 스마트 플레이스 최적화 전략 가이드",
+                "level": diagnosis_result.get("level", {}).get("name", "기본"),
+                "current_diagnosis": "진단 결과 생성에 실패했습니다.",
+                "action_plan": "진단 결과 생성에 실패했습니다.",
+                "upgrade_tips": "진단 결과 생성에 실패했습니다."
             }
     except Exception as e:
-        st.error(f"진단 계산 중 오류 발생: {e}")
+        logging.exception(f"진단 계산 중 오류 발생: {e}")
         # 기본 결과 제공
         st.session_state.diagnosis_result = {
             "level": {"name": "오류", "description": "진단 중 오류가 발생했습니다."}
@@ -299,14 +300,11 @@ def show_result_page():
     st.markdown(f"**진단 레벨:** {diagnosis_result['level']['name']}")
     st.markdown(f"**레벨 설명:** {diagnosis_result['level']['description']}")
     
-    # 전체 보고서 내용
-    full_report = f"""
-{report_data.get("current_diagnosis", "")}
-
-{report_data.get("action_plan", "")}
-
-{report_data.get("upgrade_tips", "")}
-"""
+    # 각 소제목별 결과 (비어 있으면 안내문구)
+    current = report_data.get("current_diagnosis", "진단 결과 생성에 실패했습니다.")
+    action = report_data.get("action_plan", "진단 결과 생성에 실패했습니다.")
+    upgrade = report_data.get("upgrade_tips", "진단 결과 생성에 실패했습니다.")
+    full_report = f"""# 📊 현재 진단\n{current}\n\n# 🎯 액션 플랜\n{action}\n\n# 💡 업그레이드 팁\n{upgrade}"""
     
     # PDF 다운로드 버튼 (항상 한 번만 표시)
     pdf_bytes = None
@@ -327,24 +325,18 @@ def show_result_page():
     
     # 복사 기능
     copy_container = st.container()
-    # 복사 버튼 (상단에 고정)
     with copy_container:
         if st.button("📋 전체 보고서 복사하기", key="copy_all", help="클릭하면 전체 보고서 내용을 복사할 수 있습니다"):
             toggle_copy()
-    # 복사 영역 표시 (버튼 클릭 시)
     if st.session_state.copy_clicked:
         with copy_container:
             st.text_area("아래 내용을 선택하여 복사하세요 (Ctrl+A, Ctrl+C)", full_report, height=300)
             st.info("👆 위 텍스트를 선택하고 Ctrl+A, Ctrl+C를 눌러 복사하세요!")
             if st.button("닫기", key="close_copy"):
                 toggle_copy()
-    # 진단 내용을 컨테이너에 담아 스크롤 가능하게 표시
-    with st.container():
-        st.markdown(report_data.get("current_diagnosis", ""))
-        st.markdown("---")
-        st.markdown(report_data.get("action_plan", ""))
-        st.markdown("---")
-        st.markdown(report_data.get("upgrade_tips", ""))
+    # 전체 보고서 내용을 항상 바로 아래에 출력
+    st.markdown("---")
+    st.markdown(full_report)
     st.markdown("## 새 진단 시작")
     if st.button("새로운 진단 시작하기"):
         reset_diagnostic()
