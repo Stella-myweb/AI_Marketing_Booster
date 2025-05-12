@@ -7,6 +7,9 @@ import time
 import streamlit as st
 from datetime import datetime
 from typing import Dict, List, Any
+from utils.pdf_generator import PDFGenerator
+from io import BytesIO
+import re
 
 # 페이지 설정 - 가장 먼저 호출되어야 함
 st.set_page_config(
@@ -171,6 +174,29 @@ def toggle_copy():
     """복사 상태를 토글합니다."""
     st.session_state.copy_clicked = not st.session_state.copy_clicked
 
+def clipboard_button(text_to_copy: str, label: str = "📄", tooltip: str = "복사하기"):
+    # 버튼을 오른쪽 상단에 띄우기 위해 columns 사용
+    col1, col2 = st.columns([10, 1])
+    with col2:
+        # HTML+JS로 복사 버튼 구현
+        st.components.v1.html(f"""
+        <button id="copy-btn" title="{tooltip}" style="font-size:1.2em; border:none; background:transparent; cursor:pointer;">
+            {label}
+        </button>
+        <script>
+        const btn = document.getElementById('copy-btn');
+        btn.onclick = function() {{
+            navigator.clipboard.writeText({repr(text_to_copy)});
+            btn.innerText = "✅";
+            setTimeout(()=>{{btn.innerText="{label}";}}, 1200);
+        }};
+        </script>
+        """, height=35)
+
+def clean_text(text):
+    # 큰따옴표, 별표 등 불필요한 특수문자 제거
+    return re.sub(r'["*]', '', text)
+
 # 페이지 레이아웃
 def show_welcome_page():
     """환영 페이지를 표시합니다."""
@@ -213,48 +239,42 @@ def show_diagnostic_page():
     current_stage = st.session_state.current_stage
     st.title(f"{current_stage} 단계 진단")
     
-    # 현재 단계의 질문들 표시
     questions = diagnosis_questions[current_stage]
-    for question in questions:
-        q_id = question["id"]
-        st.markdown(f"### {question['question']}")
-        
-        # 이미 답변이 있는 경우 선택된 값으로 설정
-        default_index = 0
-        if q_id in st.session_state.answers:
-            options = [opt["value"] for opt in question["options"]]
-            selected_value = st.session_state.answers[q_id]
-            if selected_value in options:
-                default_index = options.index(selected_value)
-        
-        option = st.radio(
-            f"현재 상태를 선택하세요:",
-            options=[f"{opt['value']}. {opt['text']}" for opt in question["options"]],
-            key=f"radio_{q_id}",
-            index=default_index
-        )
-        
-        # 선택한 옵션 값 추출 및 저장
-        selected_value = option.split(".")[0]
-        save_answer(q_id, selected_value)
-        
-        st.markdown("---")
     
-    # 네비게이션 버튼
-    col1, col2, col3 = st.columns([1, 1, 1])
-    
-    with col1:
-        if st.session_state.current_stage != list(diagnosis_questions.keys())[0]:
-            if st.button("이전 단계"):
-                prev_stage()
-    
-    with col3:
-        if st.session_state.current_stage == list(diagnosis_questions.keys())[-1]:
-            if st.button("진단 완료", type="primary"):
-                next_stage()
-        else:
-            if st.button("다음 단계", type="primary"):
-                next_stage()
+    with st.form(key="diagnosis_form"):
+        for question in questions:
+            q_id = question["id"]
+            st.markdown(f"### {question['question']}")
+            options = [f"{opt['value']}. {opt['text']}" for opt in question["options"]]
+            default_index = 0
+            if q_id in st.session_state.answers:
+                selected_value = st.session_state.answers[q_id]
+                option_values = [opt["value"] for opt in question["options"]]
+                if selected_value in option_values:
+                    default_index = option_values.index(selected_value)
+            option = st.radio(
+                f"현재 상태를 선택하세요:",
+                options=options,
+                key=f"radio_{q_id}",
+                index=default_index
+            )
+            selected_value = option.split(".")[0]
+            save_answer(q_id, selected_value)
+            st.markdown("---")
+        # 네비게이션 버튼
+        col1, col2, col3 = st.columns([1, 1, 1])
+        with col1:
+            prev = st.form_submit_button("이전 단계")
+        with col3:
+            if current_stage == list(diagnosis_questions.keys())[-1]:
+                next_ = st.form_submit_button("진단 완료")
+            else:
+                next_ = st.form_submit_button("다음 단계")
+    # 버튼 동작
+    if prev:
+        prev_stage()
+    if 'next_' in locals() and next_:
+        next_stage()
 
 def show_result_page():
     """결과 페이지를 표시합니다."""
@@ -282,14 +302,39 @@ def show_result_page():
 {report_data.get("upgrade_tips", "")}
 """
     
+    # PDF 다운로드 버튼
+    pdf_bytes = None
+    if st.button('📄 PDF로 다운로드'):
+        pdf_gen = PDFGenerator()
+        # PDF에 들어갈 텍스트에서 특수문자 제거
+        clean_report_data = {k: clean_text(str(v)) for k, v in report_data.items()}
+        clean_diag_result = {k: clean_text(str(v)) if isinstance(v, str) else v for k, v in diagnosis_result.items()}
+        pdf_buffer = BytesIO()
+        # PDFGenerator는 파일 경로로 저장하지만, 메모리에서 처리하도록 generate_report를 수정해야 함
+        # 임시 파일 경로 대신 BytesIO 사용
+        try:
+            # PDFGenerator에 generate_report_to_buffer 메서드가 없으면, generate_report를 임시 파일로 저장 후 읽어서 BytesIO로 변환
+            # 여기서는 임시 파일 방식 사용
+            import tempfile
+            with tempfile.TemporaryDirectory() as tmpdirname:
+                pdf_path = pdf_gen.generate_report(clean_diag_result, clean_report_data, tmpdirname)
+                with open(pdf_path, 'rb') as f:
+                    pdf_bytes = f.read()
+            st.download_button(
+                label="📄 PDF로 다운로드",
+                data=pdf_bytes,
+                file_name="place_optimization_report.pdf",
+                mime="application/pdf"
+            )
+        except Exception as e:
+            st.error(f"PDF 생성 오류: {e}")
+    
     # 복사 기능
     copy_container = st.container()
-    
     # 복사 버튼 (상단에 고정)
     with copy_container:
         if st.button("📋 전체 보고서 복사하기", key="copy_all", help="클릭하면 전체 보고서 내용을 복사할 수 있습니다"):
             toggle_copy()
-    
     # 복사 영역 표시 (버튼 클릭 시)
     if st.session_state.copy_clicked:
         with copy_container:
@@ -297,21 +342,13 @@ def show_result_page():
             st.info("👆 위 텍스트를 선택하고 Ctrl+A, Ctrl+C를 눌러 복사하세요!")
             if st.button("닫기", key="close_copy"):
                 toggle_copy()
-    
     # 진단 내용을 컨테이너에 담아 스크롤 가능하게 표시
     with st.container():
-        # 현재 진단
         st.markdown(report_data.get("current_diagnosis", ""))
         st.markdown("---")
-        
-        # 액션 플랜
         st.markdown(report_data.get("action_plan", ""))
         st.markdown("---")
-        
-        # 업그레이드 팁
         st.markdown(report_data.get("upgrade_tips", ""))
-    
-    # 새 진단 시작
     st.markdown("## 새 진단 시작")
     if st.button("새로운 진단 시작하기"):
         reset_diagnostic()
@@ -411,49 +448,3 @@ except Exception as e:
     rag_model_available = False 
 if __name__ == "__main__":
     main()
-
-
-# 메인 앱 코드 아래에 추가
-if __name__ == "__main__":
-    # 메인 앱 코드...
-    
-    # 디버깅 모드 추가 (쿼리 파라미터로 활성화)
-    params = st.experimental_get_query_params()
-    if "debug" in params:
-        st.write("## 디버깅 모드")
-        st.write("### 벡터 스토어 테스트")
-        
-        if st.button("벡터 스토어 재생성"):
-            with st.spinner("벡터 스토어 재생성 중..."):
-                vector_store = VectorStore(force_reload=True)
-                st.success("벡터 스토어가 재생성되었습니다!")
-        
-        test_query = st.text_input("테스트 쿼리", "네이버 플레이스 클릭률 높이기")
-        if st.button("검색 테스트"):
-            vector_store = VectorStore()
-            results = vector_store.raw_similarity_search(test_query, k=2)
-            for i, doc in enumerate(results):
-                st.write(f"결과 {i+1}:")
-                st.write(doc.page_content[:300] + "...")
-        
-        st.write("### 진단 보고서 테스트")
-        if st.button("테스트 보고서 생성"):
-            rag_model = RAGModel()
-            test_result = {
-                "level": {"name": "기본", "description": "기본적인 설정이 완료되었습니다."},
-                "improvements": {
-                    "weak_areas": [
-                        {"stage": "클릭하게 한다", "score": 2},
-                        {"stage": "인식하게 한다", "score": 3}
-                    ]
-                }
-            }
-            test_answers = {"q1": "네", "q2": "아니오"}
-            
-            report = rag_model.generate_diagnosis_report(test_answers, test_result)
-            
-            st.write("### 보고서 결과")
-            st.write(report["title"])
-            st.markdown(report["summary"])
-            st.markdown(report["current_diagnosis"])
-            st.markdown(report["action_plan"])
