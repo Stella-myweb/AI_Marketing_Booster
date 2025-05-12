@@ -306,23 +306,6 @@ def show_result_page():
     upgrade = report_data.get("upgrade_tips", "진단 결과 생성에 실패했습니다.")
     full_report = f"""# 📊 현재 진단\n{current}\n\n# 🎯 액션 플랜\n{action}\n\n# 💡 업그레이드 팁\n{upgrade}"""
     
-    # PDF 다운로드 버튼 (항상 한 번만 표시)
-    pdf_bytes = None
-    pdf_gen = PDFGenerator()
-    clean_report_data = {k: clean_pdf_text(clean_text(str(v))) for k, v in report_data.items()}
-    clean_diag_result = {k: clean_pdf_text(clean_text(str(v))) if isinstance(v, str) else v for k, v in diagnosis_result.items()}
-    import tempfile
-    with tempfile.TemporaryDirectory() as tmpdirname:
-        pdf_path = pdf_gen.generate_report(clean_diag_result, clean_report_data, tmpdirname)
-        with open(pdf_path, 'rb') as f:
-            pdf_bytes = f.read()
-    st.download_button(
-        label="📄 PDF로 다운로드",
-        data=pdf_bytes,
-        file_name="place_optimization_report.pdf",
-        mime="application/pdf"
-    )
-    
     # 복사 기능
     copy_container = st.container()
     with copy_container:
@@ -435,4 +418,4 @@ except Exception as e:
     st.sidebar.error(f"RAGModel 임포트 오류: {e}")
     rag_model_available = False 
 if __name__ == "__main__":
-    main()
+    main() 
