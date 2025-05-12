@@ -197,6 +197,12 @@ def clean_text(text):
     # 큰따옴표, 별표 등 불필요한 특수문자 제거
     return re.sub(r'["*]', '', text)
 
+def clean_pdf_text(text):
+    text = re.sub(r'\n+', '\n', text)
+    text = re.sub(r'[ \t]+', ' ', text)
+    text = re.sub(r'\n\s*\n', '\n', text)
+    return text.strip()
+
 # 페이지 레이아웃
 def show_welcome_page():
     """환영 페이지를 표시합니다."""
@@ -302,32 +308,22 @@ def show_result_page():
 {report_data.get("upgrade_tips", "")}
 """
     
-    # PDF 다운로드 버튼
+    # PDF 다운로드 버튼 (항상 한 번만 표시)
     pdf_bytes = None
-    if st.button('📄 PDF로 다운로드'):
-        pdf_gen = PDFGenerator()
-        # PDF에 들어갈 텍스트에서 특수문자 제거
-        clean_report_data = {k: clean_text(str(v)) for k, v in report_data.items()}
-        clean_diag_result = {k: clean_text(str(v)) if isinstance(v, str) else v for k, v in diagnosis_result.items()}
-        pdf_buffer = BytesIO()
-        # PDFGenerator는 파일 경로로 저장하지만, 메모리에서 처리하도록 generate_report를 수정해야 함
-        # 임시 파일 경로 대신 BytesIO 사용
-        try:
-            # PDFGenerator에 generate_report_to_buffer 메서드가 없으면, generate_report를 임시 파일로 저장 후 읽어서 BytesIO로 변환
-            # 여기서는 임시 파일 방식 사용
-            import tempfile
-            with tempfile.TemporaryDirectory() as tmpdirname:
-                pdf_path = pdf_gen.generate_report(clean_diag_result, clean_report_data, tmpdirname)
-                with open(pdf_path, 'rb') as f:
-                    pdf_bytes = f.read()
-            st.download_button(
-                label="📄 PDF로 다운로드",
-                data=pdf_bytes,
-                file_name="place_optimization_report.pdf",
-                mime="application/pdf"
-            )
-        except Exception as e:
-            st.error(f"PDF 생성 오류: {e}")
+    pdf_gen = PDFGenerator()
+    clean_report_data = {k: clean_pdf_text(clean_text(str(v))) for k, v in report_data.items()}
+    clean_diag_result = {k: clean_pdf_text(clean_text(str(v))) if isinstance(v, str) else v for k, v in diagnosis_result.items()}
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        pdf_path = pdf_gen.generate_report(clean_diag_result, clean_report_data, tmpdirname)
+        with open(pdf_path, 'rb') as f:
+            pdf_bytes = f.read()
+    st.download_button(
+        label="📄 PDF로 다운로드",
+        data=pdf_bytes,
+        file_name="place_optimization_report.pdf",
+        mime="application/pdf"
+    )
     
     # 복사 기능
     copy_container = st.container()
