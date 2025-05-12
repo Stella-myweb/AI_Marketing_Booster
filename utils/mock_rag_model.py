@@ -4,6 +4,7 @@ import os
 from typing import Dict, List, Any, Optional, Tuple
 import random
 import time
+import textwrap
 
 # 자체 모듈 임포트
 from utils.vector_store import VectorStore
@@ -75,50 +76,74 @@ class MockRAGModel:
     def generate_diagnosis_report(self, answers: Dict[str, str], diagnosis_result: Dict[str, Any]) -> Dict[str, Any]:
         """
         자가진단 결과를 바탕으로 진단 보고서를 생성합니다. (API 없이 테스트용)
-        
-        Args:
-            answers: 질문 ID를 키로, 선택한 옵션(A-E)을 값으로 하는 딕셔너리
-            diagnosis_result: calculate_score 함수의 반환값
-            
-        Returns:
-            진단 보고서 (제목, 요약, 강점, 개선점, 액션 플랜 등)
         """
-        # 진단 시간 시뮬레이션
         time.sleep(2)
-        
-        # 레벨에 따른 응답 템플릿
         level = diagnosis_result["level"]["name"]
-        
-        # 개선이 필요한 영역 파악
         improvements = diagnosis_result.get("improvements", {})
         weak_areas = [area['stage'] for area in improvements.get('weak_areas', [])]
         weak_areas_str = ", ".join(weak_areas) if weak_areas else "없음"
-        
-        # 강점 영역 파악
         stage_scores = diagnosis_result.get("stage_scores", {})
         strength_areas = [
             stage for stage, score_info in stage_scores.items() 
             if score_info['avg_score'] >= 4.0
         ]
         strength_areas_str = ", ".join(strength_areas) if strength_areas else "없음"
-        
-        # 레벨별 템플릿 응답
+
+        # 1000자 종합진단
+        overview = textwrap.shorten(
+            (
+                f"현재 네이버 스마트 플레이스 마케팅은 '{level}' 단계로 진단됩니다. "
+                f"강점 영역: {strength_areas_str if strength_areas_str else '없음'} / "
+                f"개선 필요 영역: {weak_areas_str if weak_areas_str else '없음'}. "
+                "스마트 플레이스의 기본 정보, 이미지, 리뷰, 예약 시스템 등 주요 항목을 종합적으로 평가하였으며, "
+                "고객 유입부터 재방문 유도까지의 전체 마케팅 퍼널을 분석하였습니다. "
+                "강점 영역은 현재 잘 관리되고 있으나, 개선이 필요한 영역에서는 구체적인 실행 방안이 필요합니다. "
+                "특히, 최신 트렌드 반영, 차별화된 콘텐츠, 고객 경험 개선이 중요합니다. "
+                "향후에는 데이터 기반의 지속적 개선과 경쟁사 벤치마킹을 통해 한 단계 더 도약할 수 있습니다. "
+                "아래 각 영역별 상세 분석과 액션 플랜을 참고하여 실질적인 개선을 추진해보세요. "
+                "(이 보고서는 AI 기반 모의 진단 결과로, 실제 현장 상황에 따라 조정이 필요할 수 있습니다.)"
+            ),
+            width=1000,
+            placeholder="..."
+        )
+
+        # 개선점 분석을 더 구체적으로
+        improvements_analysis = (
+            f"[문제 진단] 현재 '{', '.join(weak_areas)}' 영역에서 점수가 낮게 나타났습니다. "
+            "이 영역들은 고객이 비즈니스를 발견하고, 클릭하고, 방문하며, 재방문하는 전체 여정에서 핵심적인 병목 구간입니다. "
+            "주요 문제점은 다음과 같습니다:\n"
+        )
+        for area in weak_areas:
+            improvements_analysis += f"- {area}: "
+            if area == "검색 노출 최적화":
+                improvements_analysis += "키워드 설정 미흡, 상세 설명 부족, 위치 정보 부정확 등으로 검색 결과 상위 노출이 어렵습니다.\n"
+            elif area == "클릭율 높이는 전략":
+                improvements_analysis += "이미지 품질 저하, 차별화 포인트 부족, 매력적인 문구 미흡 등으로 클릭 유도가 약합니다.\n"
+            elif area == "머물게 한다":
+                improvements_analysis += "콘텐츠 업데이트 빈도 낮음, 이벤트/프로모션 부족, 정보의 신뢰성 부족 등으로 체류시간이 짧습니다.\n"
+            elif area == "문의/예약 전환율 높이기":
+                improvements_analysis += "예약/문의 기능 미활성화, 전환 유도 문구 부족, 응답 속도 저하 등으로 전환율이 낮습니다.\n"
+            elif area == "고객 재방문 유도 전략":
+                improvements_analysis += "리뷰 관리 미흡, 단골 고객 관리 부족, 재방문 유도 프로모션 부재 등으로 재방문율이 낮습니다.\n"
+            else:
+                improvements_analysis += "구체적 개선 필요.\n"
+        improvements_analysis += "\n각 문제점에 대한 원인 분석과 개선 방안은 아래 액션 플랜을 참고하세요."
+
+        # 기존 템플릿 활용
         templates = {
             "초기 단계": self._get_beginner_template(weak_areas_str, strength_areas_str),
             "발전 단계": self._get_intermediate_template(weak_areas_str, strength_areas_str),
             "고급 단계": self._get_advanced_template(weak_areas_str, strength_areas_str),
             "최적화 단계": self._get_optimized_template(weak_areas_str, strength_areas_str)
         }
-        
-        # 현재 레벨에 해당하는 템플릿 가져오기
         template = templates.get(level, templates["초기 단계"])
-        
+
         return {
             "title": f"네이버 스마트 플레이스 최적화 진단 보고서",
             "level": level,
-            "overview": template["overview"],
+            "overview": overview,
             "strengths_analysis": template["strengths_analysis"],
-            "improvements_analysis": template["improvements_analysis"],
+            "improvements_analysis": improvements_analysis,
             "action_plan": template["action_plan"]
         }
     

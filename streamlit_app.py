@@ -349,16 +349,6 @@ def main():
                 if st.button("처음으로 돌아가기"):
                     reset_diagnostic()
             
-            if st.session_state.page == 'result':
-                st.markdown("### 목차")
-                st.markdown("- [📊 현재 진단](#현재-진단)")
-                st.markdown("- [🎯 액션 플랜](#액션-플랜)")  
-                st.markdown("- [💡 업그레이드 팁](#업그레이드-팁)")
-                
-                # 전체 보고서 복사 버튼 (사이드바에도 추가)
-                if st.button("📋 전체 보고서 복사", key="sidebar_copy"):
-                    toggle_copy()
-            
             st.markdown("---")
             st.markdown("### 개발자 정보")
             st.markdown("스마트 플레이스 최적화 컨설팅")
