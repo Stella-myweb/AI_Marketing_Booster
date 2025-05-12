@@ -27,7 +27,6 @@ st.set_page_config(
 from utils.questions import diagnosis_questions, calculate_score, suggest_improvements
 from utils.vector_store import VectorStore
 from utils.rag_model import RAGModel
-from utils.mock_rag_model import MockRAGModel
 
 # 설정 로드
 from config import APP_TITLE, APP_DESCRIPTION, REPORT_TITLE, COMPANY_NAME, LOGO_PATH, LLM_MODEL
@@ -79,7 +78,9 @@ def reset_diagnostic():
 
 def save_answer(question_id, answer):
     """질문에 대한 응답을 저장합니다."""
-    st.session_state.answers[question_id] = answer
+    if question_id not in st.session_state.answers or st.session_state.answers[question_id] != answer:
+        st.session_state.answers[question_id] = answer
+        # 답변 저장 시 자동으로 다음 단계로 이동하지 않도록 함
 
 def get_progress():
     """진단 진행 상황을 백분율로 반환합니다."""
@@ -119,45 +120,64 @@ def calculate_diagnosis():
         diagnosis_result['improvements'] = improvements
         # 세션 상태에 저장
         st.session_state.diagnosis_result = diagnosis_result
-        # RAG 모델 사용 전 API 키 확인
-        if "OPENAI_API_KEY" in st.secrets:
-            api_key = st.secrets["OPENAI_API_KEY"]
-        else:
-            api_key = os.getenv("OPENAI_API_KEY")
-        # API 키가 없으면 MockRAGModel 사용
+        
+        # RAGModel 초기화 전에 API 키 확인
+        api_key = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY"))
+        if not api_key:
+            raise ValueError("OpenAI API 키가 설정되지 않았습니다.")
+        
         try:
             with st.spinner("진단 보고서를 생성하고 있습니다..."):
-                if not api_key:
-                    rag_model = MockRAGModel()
-                else:
-                    rag_model = RAGModel()
+                rag_model = RAGModel()
+                if rag_model.llm is None or rag_model.vector_store is None:
+                    raise ValueError("RAG 모델 초기화에 실패했습니다.")
+                    
                 report_data = rag_model.generate_diagnosis_report(
                     answers=st.session_state.answers,
                     diagnosis_result=diagnosis_result
                 )
+                
+                # 보고서 데이터 구조 검증
+                required_keys = ["title", "level", "overview", "strengths_analysis", 
+                               "improvements_analysis", "action_plan", "upgrade_tips"]
+                if not all(key in report_data for key in required_keys):
+                    raise ValueError("보고서 데이터 구조가 올바르지 않습니다.")
+                    
                 st.session_state.report_data = report_data
+                
         except Exception as e:
             logging.exception(f"진단 보고서 생성 중 오류: {e}")
+            error_message = str(e)
+            if "API 키" in error_message:
+                error_message = "OpenAI API 키가 필요합니다. API 키를 설정해주세요."
+            elif "초기화" in error_message:
+                error_message = "RAG 모델 초기화에 실패했습니다. 다시 시도해주세요."
+            
+            st.error(error_message)
             st.session_state.report_data = {
                 "title": "네이버 스마트 플레이스 최적화 전략 가이드",
                 "level": diagnosis_result.get("level", {}).get("name", "기본"),
-                "overview": "진단 결과 생성에 실패했습니다.",
-                "strengths_analysis": "진단 결과 생성에 실패했습니다.",
-                "improvements_analysis": "진단 결과 생성에 실패했습니다.",
-                "action_plan": "진단 결과 생성에 실패했습니다."
+                "overview": error_message,
+                "strengths_analysis": error_message,
+                "improvements_analysis": error_message,
+                "action_plan": error_message,
+                "upgrade_tips": error_message
             }
     except Exception as e:
         logging.exception(f"진단 계산 중 오류 발생: {e}")
+        error_message = "진단 계산 중 오류가 발생했습니다. 다시 시도해주세요."
+        st.error(error_message)
         st.session_state.diagnosis_result = {
-            "level": {"name": "오류", "description": "진단 중 오류가 발생했습니다."}
+            "level": {"name": "오류", "description": error_message}
         }
         st.session_state.report_data = {
             "title": "오류 발생",
             "level": "오류",
-            "overview": "진단 계산 중 오류가 발생했습니다.",
-            "strengths_analysis": "다시 시도해주세요.",
-            "improvements_analysis": "문제가 지속되면 개발자에게 문의하세요.",
-            "action_plan": "다시 시도해주세요."
+            "overview": error_message,
+            "strengths_analysis": error_message,
+            "improvements_analysis": error_message,
+            "action_plan": error_message,
+            "upgrade_tips": error_message
         }
 
 def toggle_copy():
@@ -245,7 +265,9 @@ def show_diagnostic_page():
     
     questions = diagnosis_questions[current_stage]
     
-    with st.form(key="diagnosis_form"):
+    # 폼 대신 일반 컨테이너 사용
+    container = st.container()
+    with container:
         for question in questions:
             q_id = question["id"]
             st.markdown(f"### {question['question']}")
@@ -256,29 +278,34 @@ def show_diagnostic_page():
                 option_values = [opt["value"] for opt in question["options"]]
                 if selected_value in option_values:
                     default_index = option_values.index(selected_value)
+            
+            # 라디오 버튼 선택 시 즉시 저장
             option = st.radio(
                 f"현재 상태를 선택하세요:",
                 options=options,
                 key=f"radio_{q_id}",
-                index=default_index
+                index=default_index,
+                on_change=lambda: save_answer(q_id, option.split(".")[0])
             )
             selected_value = option.split(".")[0]
             save_answer(q_id, selected_value)
             st.markdown("---")
-        # 네비게이션 버튼
-        col1, col2, col3 = st.columns([1, 1, 1])
-        with col1:
-            prev = st.form_submit_button("이전 단계")
-        with col3:
-            if current_stage == list(diagnosis_questions.keys())[-1]:
-                next_ = st.form_submit_button("진단 완료")
-            else:
-                next_ = st.form_submit_button("다음 단계")
-    # 버튼 동작
-    if prev:
-        prev_stage()
-    if 'next_' in locals() and next_:
-        next_stage()
+    
+    # 네비게이션 버튼을 폼 밖으로 이동
+    col1, col2, col3 = st.columns([1, 1, 1])
+    with col1:
+        if st.button("⬅️ 이전 단계", key="prev_button"):
+            prev_stage()
+            st.rerun()
+    with col3:
+        if current_stage == list(diagnosis_questions.keys())[-1]:
+            if st.button("✅ 진단 완료", key="next_button", type="primary"):
+                next_stage()
+                st.rerun()
+        else:
+            if st.button("다음 단계 ➡️", key="next_button", type="primary"):
+                next_stage()
+                st.rerun()
 
 def show_result_page():
     """결과 페이지를 표시합니다."""
@@ -287,28 +314,58 @@ def show_result_page():
         if st.button("진단 페이지로 돌아가기"):
             st.session_state.page = 'diagnostic'
         return
+
     diagnosis_result = st.session_state.diagnosis_result
     report_data = st.session_state.report_data
+
+    # 보고서 데이터 유효성 검사
+    if not report_data or not isinstance(report_data, dict):
+        st.error("보고서 데이터가 올바르지 않습니다. 다시 진단을 시작해주세요.")
+        if st.button("진단 페이지로 돌아가기"):
+            st.session_state.page = 'diagnostic'
+        return
+
     st.title("네이버 스마트 플레이스 최적화 진단 결과")
-    st.markdown(f"**진단 레벨:** {diagnosis_result['level']['name']}")
-    st.markdown(f"**레벨 설명:** {diagnosis_result['level']['description']}")
-    overview = report_data.get("overview", "진단 결과 생성에 실패했습니다.")
-    strengths = report_data.get("strengths_analysis", "진단 결과 생성에 실패했습니다.")
-    improvements = report_data.get("improvements_analysis", "진단 결과 생성에 실패했습니다.")
-    action = report_data.get("action_plan", "진단 결과 생성에 실패했습니다.")
-    full_report = f"""# 📑 진단 요약\n{overview}\n\n# 📈 강점 분석\n{strengths}\n\n# 🛠️ 개선점 분석\n{improvements}\n\n# 🎯 액션 플랜\n{action}"""
+    
+    # 레벨 정보 표시
+    level_name = diagnosis_result.get('level', {}).get('name', '기본')
+    level_desc = diagnosis_result.get('level', {}).get('description', '')
+    st.markdown(f"**진단 레벨:** {level_name}")
+    if level_desc:
+        st.markdown(f"**레벨 설명:** {level_desc}")
+
+    # 보고서 섹션 정의
+    sections = {
+        "📊 종합 진단": report_data.get("overview", "진단 결과를 불러올 수 없습니다."),
+        "💪 강점 분석": report_data.get("strengths_analysis", "진단 결과를 불러올 수 없습니다."),
+        "🎯 개선점 분석": report_data.get("improvements_analysis", "진단 결과를 불러올 수 없습니다."),
+        "📝 액션 플랜": report_data.get("action_plan", "진단 결과를 불러올 수 없습니다."),
+        "💡 고급 전략 팁": report_data.get("upgrade_tips", "진단 결과를 불러올 수 없습니다.")
+    }
+
+    # 전체 보고서 텍스트 생성
+    full_report = "\n\n".join([f"# {title}\n{content}" for title, content in sections.items()])
+
+    # 복사 버튼 컨테이너
     copy_container = st.container()
     with copy_container:
         if st.button("📋 전체 보고서 복사하기", key="copy_all", help="클릭하면 전체 보고서 내용을 복사할 수 있습니다"):
             toggle_copy()
+
     if st.session_state.copy_clicked:
         with copy_container:
             st.text_area("아래 내용을 선택하여 복사하세요 (Ctrl+A, Ctrl+C)", full_report, height=300)
             st.info("👆 위 텍스트를 선택하고 Ctrl+A, Ctrl+C를 눌러 복사하세요!")
             if st.button("닫기", key="close_copy"):
                 toggle_copy()
-    st.markdown("---")
-    st.markdown(full_report)
+        st.markdown("---")
+
+    # 각 섹션별로 표시
+    for title, content in sections.items():
+        st.markdown(f"## {title}")
+        st.markdown(content)
+        st.markdown("---")
+
     st.markdown("## 새 진단 시작")
     if st.button("새로운 진단 시작하기"):
         reset_diagnostic()
@@ -385,7 +442,7 @@ def main():
                 </style>
                 
                 <button class="floating-button" onclick="document.getElementById('copy_all').click()">
-                    📋
+                    📋 전체 보고서 복사하기
                 </button>
                 """,
                 unsafe_allow_html=True

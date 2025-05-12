@@ -150,17 +150,21 @@ class RAGModel:
 
     def generate_diagnosis_report(self, answers: Dict[str, str], diagnosis_result: Dict[str, Any]) -> Dict[str, Any]:
         """
-        자가진단 결과를 바탕으로 각 소제목별(현재 진단, 액션 플랜, 업그레이드 팁)로 800자 이내의 전문적 분석을 생성합니다.
+        자가진단 결과를 바탕으로 각 소제목별로 전문적 분석을 생성합니다.
         """
         try:
             level = diagnosis_result.get("level", {}).get("name", "기본")
             improvements = diagnosis_result.get("improvements", {})
             weak_areas = [area['stage'] for area in improvements.get('weak_areas', [])]
+            strong_areas = [area['stage'] for area in improvements.get('strong_areas', [])]
             area_contexts = {}
+            
             if self.vector_store:
-                for area in weak_areas:
+                # 약점 영역과 강점 영역 모두에 대한 컨텍스트 수집
+                for area in set(weak_areas + strong_areas):
                     query = f"네이버 스마트 플레이스 {area} 전략과 성공 사례"
                     area_contexts[area] = self.vector_store.get_relevant_content(query, n_results=2)
+            
             title_map = {
                 "인식하게 한다": "검색 노출 최적화",
                 "클릭하게 한다": "클릭율 높이는 전략",
@@ -168,25 +172,98 @@ class RAGModel:
                 "연락오게 한다": "문의/예약 전환율 높이기",
                 "후속 피드백 받는다": "고객 재방문 유도 전략"
             }
+
             # 각 소제목별로 따로 프롬프트 생성
             prompts = {
-                "current_diagnosis": f"""
-                당신은 네이버 스마트 플레이스 최적화 전문가입니다. 아래 진단 결과와 참고 자료를 바탕으로\n# 📊 현재 진단\n800자 이내로, 현황과 문제점, 개선 필요성을 구체적으로 분석해 주세요.\n진단 레벨: {level}\n집중 개선 영역: {', '.join([title_map.get(area, area) for area in weak_areas[:2]])}\n참고 자료:\n{'\\n'.join([area_contexts.get(area, '') for area in weak_areas[:2]])}
+                "overview": f"""
+                당신은 네이버 스마트 플레이스 최적화 전문가입니다. 아래 진단 결과를 바탕으로\n# 📊 종합 진단\n
+                1. 현재 상태: {level} 레벨로 진단되었습니다.
+                2. 강점 영역: {', '.join([title_map.get(area, area) for area in strong_areas[:2]])}
+                3. 개선 영역: {', '.join([title_map.get(area, area) for area in weak_areas[:2]])}
+                
+                800자 이내로 다음 내용을 포함하여 종합적인 진단 분석을 작성해주세요:
+                - 현재 스마트 플레이스 운영의 전반적인 수준
+                - 강점 영역에서의 우수한 점
+                - 개선 영역에서의 주요 과제
+                - 향후 발전 방향
+                
+                참고 자료:
+                {'\\n'.join([area_contexts.get(area, '') for area in weak_areas[:2] + strong_areas[:2]])}
                 """,
+                
+                "strengths_analysis": f"""
+                당신은 네이버 스마트 플레이스 최적화 전문가입니다. 아래 진단 결과를 바탕으로\n# 💪 강점 분석\n
+                1. 강점 영역: {', '.join([title_map.get(area, area) for area in strong_areas[:2]])}
+                2. 진단 레벨: {level}
+                
+                800자 이내로 다음 내용을 포함하여 강점 분석을 작성해주세요:
+                - 각 강점 영역별 세부 분석
+                - 현재 잘 하고 있는 점
+                - 강점을 더욱 강화할 수 있는 방안
+                - 경쟁사 대비 우위 요소
+                
+                참고 자료:
+                {'\\n'.join([area_contexts.get(area, '') for area in strong_areas[:2]])}
+                """,
+                
+                "improvements_analysis": f"""
+                당신은 네이버 스마트 플레이스 최적화 전문가입니다. 아래 진단 결과를 바탕으로\n# 🎯 개선점 분석\n
+                1. 개선 영역: {', '.join([title_map.get(area, area) for area in weak_areas[:2]])}
+                2. 진단 레벨: {level}
+                
+                800자 이내로 다음 내용을 포함하여 개선점 분석을 작성해주세요:
+                - 각 개선 영역별 세부 분석
+                - 현재 부족한 점
+                - 개선이 필요한 이유
+                - 개선 시 기대 효과
+                
+                참고 자료:
+                {'\\n'.join([area_contexts.get(area, '') for area in weak_areas[:2]])}
+                """,
+                
                 "action_plan": f"""
-                당신은 네이버 스마트 플레이스 최적화 전문가입니다. 아래 진단 결과와 참고 자료를 바탕으로\n# 🎯 액션 플랜\n800자 이내로, 실질적으로 실행할 수 있는 구체적 전략과 단계별 실천 방안을 제시해 주세요.\n진단 레벨: {level}\n집중 개선 영역: {', '.join([title_map.get(area, area) for area in weak_areas[:2]])}\n참고 자료:\n{'\\n'.join([area_contexts.get(area, '') for area in weak_areas[:2]])}
+                당신은 네이버 스마트 플레이스 최적화 전문가입니다. 아래 진단 결과를 바탕으로\n# 📝 액션 플랜\n
+                1. 개선 영역: {', '.join([title_map.get(area, area) for area in weak_areas[:2]])}
+                2. 진단 레벨: {level}
+                
+                800자 이내로 다음 내용을 포함하여 구체적인 액션 플랜을 작성해주세요:
+                - 단기 실행 계획 (1-2주)
+                - 중기 실행 계획 (1-3개월)
+                - 장기 실행 계획 (3-6개월)
+                - 각 단계별 구체적인 실행 방안
+                - 예상되는 결과와 효과
+                
+                참고 자료:
+                {'\\n'.join([area_contexts.get(area, '') for area in weak_areas[:2]])}
                 """,
+                
                 "upgrade_tips": f"""
-                당신은 네이버 스마트 플레이스 최적화 전문가입니다. 아래 진단 결과와 참고 자료를 바탕으로\n# 💡 업그레이드 팁\n800자 이내로, 경쟁사와 차별화할 수 있는 고급 팁과 실전 사례를 제시해 주세요.\n진단 레벨: {level}\n집중 개선 영역: {', '.join([title_map.get(area, area) for area in weak_areas[:2]])}\n참고 자료:\n{'\\n'.join([area_contexts.get(area, '') for area in weak_areas[:2]])}
+                당신은 네이버 스마트 플레이스 최적화 전문가입니다. 아래 진단 결과를 바탕으로\n# 💡 고급 전략 팁\n
+                1. 진단 레벨: {level}
+                2. 강점 영역: {', '.join([title_map.get(area, area) for area in strong_areas[:2]])}
+                3. 개선 영역: {', '.join([title_map.get(area, area) for area in weak_areas[:2]])}
+                
+                800자 이내로 다음 내용을 포함하여 고급 전략 팁을 작성해주세요:
+                - 경쟁사와의 차별화 전략
+                - 최신 트렌드 활용 방안
+                - 고객 경험 향상 팁
+                - ROI를 높이는 실전 전략
+                
+                참고 자료:
+                {'\\n'.join([area_contexts.get(area, '') for area in weak_areas[:2] + strong_areas[:2]])}
                 """
             }
+            
             results = {}
             for key, prompt in prompts.items():
                 results[key] = self.llm.predict(prompt)[:800]
+            
             return {
                 "title": "네이버 스마트 플레이스 최적화 전략 가이드",
                 "level": level,
-                "current_diagnosis": results["current_diagnosis"],
+                "overview": results["overview"],
+                "strengths_analysis": results["strengths_analysis"],
+                "improvements_analysis": results["improvements_analysis"],
                 "action_plan": results["action_plan"],
                 "upgrade_tips": results["upgrade_tips"]
             }
@@ -195,7 +272,9 @@ class RAGModel:
             return {
                 "title": "네이버 스마트 플레이스 최적화 전략 가이드",
                 "level": diagnosis_result.get("level", {}).get("name", "기본"),
-                "current_diagnosis": "진단 결과 생성에 실패했습니다.",
+                "overview": "진단 결과 생성에 실패했습니다.",
+                "strengths_analysis": "진단 결과 생성에 실패했습니다.",
+                "improvements_analysis": "진단 결과 생성에 실패했습니다.",
                 "action_plan": "진단 결과 생성에 실패했습니다.",
                 "upgrade_tips": "진단 결과 생성에 실패했습니다."
             }
