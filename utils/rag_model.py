@@ -7,7 +7,7 @@ from typing import Dict, List, Any, Optional
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.document_loaders import TextLoader
+from langchain_community.document_loaders import TextLoader
 
 # 설정
 from config import OPENAI_API_KEY, LLM_MODEL, TEMPERATURE, DATA_DIR
@@ -20,51 +20,94 @@ class VectorStore:
             if not api_key:
                 st.error("OpenAI API 키가 설정되지 않았습니다.")
                 raise ValueError("API 키가 없습니다")
-            self.embeddings = OpenAIEmbeddings(openai_api_key=api_key, model="text-embedding-ada-002")
+            
+            # API 키 유효성 검사
+            try:
+                self.embeddings = OpenAIEmbeddings(
+                    openai_api_key=api_key,
+                    model="text-embedding-ada-002"
+                )
+                # 간단한 임베딩 테스트
+                self.embeddings.embed_query("test")
+            except Exception as e:
+                st.error(f"OpenAI API 키 유효성 검사 실패: {e}")
+                raise ValueError("API 키가 유효하지 않습니다")
+            
             self.data_dir = DATA_DIR
             vectorstore_path = os.path.join(self.data_dir, "vectorstore")
+            
+            # 벡터스토어 디렉토리 확인
+            if not os.path.exists(self.data_dir):
+                os.makedirs(self.data_dir, exist_ok=True)
+                st.warning(f"데이터 디렉토리가 생성되었습니다: {self.data_dir}")
+            
             if os.path.exists(vectorstore_path):
-                self.vectorstore = FAISS.load_local(vectorstore_path, self.embeddings)
+                try:
+                    self.vectorstore = FAISS.load_local(vectorstore_path, self.embeddings)
+                    st.success("벡터스토어를 성공적으로 로드했습니다.")
+                except Exception as e:
+                    st.warning(f"기존 벡터스토어 로드 실패, 새로 생성합니다: {e}")
+                    self._create_vectorstore()
             else:
+                st.info("벡터스토어를 새로 생성합니다...")
                 self._create_vectorstore()
+                
         except Exception as e:
             st.error(f"벡터 스토어 초기화 오류: {e}")
             raise
 
     def _create_vectorstore(self):
-        content_dir = os.path.join(self.data_dir, "content")
-        if not os.path.exists(content_dir):
-            os.makedirs(content_dir, exist_ok=True)
-        text_files = [os.path.join(root, file)
-                      for root, _, files in os.walk(content_dir)
-                      for file in files if file.endswith(".txt")]
-        ebook_file = os.path.join(self.data_dir, "ebook_content.txt")
-        if os.path.exists(ebook_file):
-            text_files.append(ebook_file)
-        if not text_files:
-            default_file = os.path.join(content_dir, "default_content.txt")
-            with open(default_file, "w", encoding="utf-8") as f:
-                f.write("""
-                네이버 스마트 플레이스 최적화를 위한 기본 가이드:
-                1. 정확한 기본 정보 입력하기
-                2. 매력적인 이미지 사용하기
-                3. 키워드 최적화하기
-                4. 고객 리뷰 관리하기
-                5. 정기적인 업데이트하기
-                """)
-            text_files.append(default_file)
-        documents = []
-        for file_path in text_files:
-            try:
-                loader = TextLoader(file_path, encoding="utf-8")
-                documents.extend(loader.load())
-            except Exception as e:
-                st.warning(f"파일 로드 오류 ({file_path}): {e}")
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
-        split_documents = text_splitter.split_documents(documents)
-        self.vectorstore = FAISS.from_documents(split_documents, self.embeddings)
-        vectorstore_path = os.path.join(self.data_dir, "vectorstore")
-        self.vectorstore.save_local(vectorstore_path)
+        try:
+            content_dir = os.path.join(self.data_dir, "content")
+            if not os.path.exists(content_dir):
+                os.makedirs(content_dir, exist_ok=True)
+                st.info(f"콘텐츠 디렉토리가 생성되었습니다: {content_dir}")
+            
+            text_files = [os.path.join(root, file)
+                         for root, _, files in os.walk(content_dir)
+                         for file in files if file.endswith(".txt")]
+            
+            ebook_file = os.path.join(self.data_dir, "ebook_content.txt")
+            if os.path.exists(ebook_file):
+                text_files.append(ebook_file)
+            
+            if not text_files:
+                default_file = os.path.join(content_dir, "default_content.txt")
+                with open(default_file, "w", encoding="utf-8") as f:
+                    f.write("""
+                    네이버 스마트 플레이스 최적화를 위한 기본 가이드:
+                    1. 정확한 기본 정보 입력하기
+                    2. 매력적인 이미지 사용하기
+                    3. 키워드 최적화하기
+                    4. 고객 리뷰 관리하기
+                    5. 정기적인 업데이트하기
+                    """)
+                text_files.append(default_file)
+                st.info("기본 콘텐츠 파일이 생성되었습니다.")
+            
+            documents = []
+            for file_path in text_files:
+                try:
+                    loader = TextLoader(file_path, encoding="utf-8")
+                    documents.extend(loader.load())
+                    st.success(f"파일 로드 성공: {os.path.basename(file_path)}")
+                except Exception as e:
+                    st.warning(f"파일 로드 오류 ({file_path}): {e}")
+            
+            if not documents:
+                raise ValueError("로드할 수 있는 문서가 없습니다.")
+            
+            text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+            split_documents = text_splitter.split_documents(documents)
+            
+            self.vectorstore = FAISS.from_documents(split_documents, self.embeddings)
+            vectorstore_path = os.path.join(self.data_dir, "vectorstore")
+            self.vectorstore.save_local(vectorstore_path)
+            st.success("벡터스토어가 성공적으로 생성되었습니다.")
+            
+        except Exception as e:
+            st.error(f"벡터스토어 생성 중 오류: {e}")
+            raise
 
     def get_relevant_content(self, query: str, n_results: int = 3) -> str:
         try:
@@ -100,16 +143,33 @@ class RAGModel:
             if not api_key:
                 st.error("OpenAI API 키가 설정되지 않았습니다.")
                 raise ValueError("API 키가 없습니다")
-            self.vector_store = VectorStore()
-            self.llm = ChatOpenAI(
-                openai_api_key=api_key,
-                model_name=LLM_MODEL,
-                temperature=TEMPERATURE
-            )
+            
+            # API 키 유효성 검사
+            try:
+                self.llm = ChatOpenAI(
+                    openai_api_key=api_key,
+                    model_name=LLM_MODEL,
+                    temperature=TEMPERATURE
+                )
+                # 간단한 테스트 쿼리
+                self.llm.predict("test")
+            except Exception as e:
+                st.error(f"OpenAI API 키 유효성 검사 실패: {e}")
+                raise ValueError("API 키가 유효하지 않습니다")
+            
+            # 벡터스토어 초기화
+            try:
+                self.vector_store = VectorStore()
+                st.success("RAG 모델이 성공적으로 초기화되었습니다.")
+            except Exception as e:
+                st.error(f"벡터스토어 초기화 실패: {e}")
+                raise ValueError("벡터스토어 초기화에 실패했습니다")
+                
         except Exception as e:
             st.error(f"RAG 모델 초기화 오류: {e}")
             self.llm = None
             self.vector_store = None
+            raise
 
     def generate_response(self, query: str, context: str = None, n_results: int = 3) -> str:
         """
@@ -296,4 +356,4 @@ class RAGModel:
             st.error(f"이북 콘텐츠 검색 오류: {e}")
             return [{"content": "검색 중 오류가 발생했습니다.", "source": "시스템"}]
 
-__all__ = ['RAGModel']
+__all__ = ['RAGModel'] 
