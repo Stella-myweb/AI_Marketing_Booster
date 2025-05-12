@@ -11,6 +11,7 @@ from utils.pdf_generator import PDFGenerator
 from io import BytesIO
 import re
 import logging
+import openai
 
 # 페이지 설정 - 가장 먼저 호출되어야 함
 st.set_page_config(
@@ -203,6 +204,14 @@ def clean_pdf_text(text):
     text = re.sub(r'[ \t]+', ' ', text)
     text = re.sub(r'\n\s*\n', '\n', text)
     return text.strip()
+
+def check_openai_api_key(api_key):
+    try:
+        openai.api_key = api_key
+        openai.Model.list()  # 가장 간단한 API 호출
+        return True, "API 키가 정상적으로 작동합니다."
+    except Exception as e:
+        return False, f"API 키 오류: {e}"
 
 # 페이지 레이아웃
 def show_welcome_page():
@@ -418,4 +427,4 @@ except Exception as e:
     st.sidebar.error(f"RAGModel 임포트 오류: {e}")
     rag_model_available = False 
 if __name__ == "__main__":
-    main() 
+    main()
