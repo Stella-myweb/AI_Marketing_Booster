@@ -27,7 +27,7 @@ from utils.vector_store import VectorStore
 from utils.rag_model import RAGModel
 
 # 설정 로드
-from config import APP_TITLE, APP_DESCRIPTION
+from config import APP_TITLE, APP_DESCRIPTION, REPORT_TITLE, COMPANY_NAME, LOGO_PATH
 
 # 나머지 코드는 그대로 유지... 
 
