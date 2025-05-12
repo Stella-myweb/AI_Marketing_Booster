@@ -7,21 +7,6 @@ import time
 import streamlit as st
 from datetime import datetime
 from typing import Dict, List, Any
-from utils.pdf_generator import PDFGenerator
-from io import BytesIO
-import re
-import logging
-import openai
-
-# 페이지 설정 - 가장 먼저 호출되어야 함
-st.set_page_config(
-    page_title="AI 마케팅 부스터",
-    page_icon="🔍",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-
 
 # 자체 모듈 임포트
 from utils.questions import diagnosis_questions, calculate_score, suggest_improvements
@@ -29,28 +14,7 @@ from utils.vector_store import VectorStore
 from utils.rag_model import RAGModel
 
 # 설정 로드
-from config import APP_TITLE, APP_DESCRIPTION, REPORT_TITLE, COMPANY_NAME, LOGO_PATH, LLM_MODEL
-
-# 나머지 코드는 그대로 유지... 
-
-# # 디버깅 정보
-# st.sidebar.write("### 디버깅 정보")
-# if "OPENAI_API_KEY" in st.secrets:
-#     st.sidebar.success("API 키 설정됨 (secrets)")
-# elif os.getenv("OPENAI_API_KEY"):
-#     st.sidebar.success("API 키 설정됨 (환경변수)")
-# else:
-#     st.sidebar.error("API 키 없음")
-
-# # 파일 경로 확인
-# current_dir = os.path.dirname(os.path.abspath(__file__))
-# data_dir = os.path.join(current_dir, "data")
-# ebook_path = os.path.join(data_dir, "ebook_content.txt")
-
-# if os.path.exists(ebook_path):
-#     st.sidebar.success(f"ebook_content.txt 파일 존재")
-# else:
-#     st.sidebar.error(f"ebook_content.txt 파일 없음")
+from config import APP_TITLE, APP_DESCRIPTION
 
 # 전역 변수 설정
 if 'answers' not in st.session_state:
@@ -78,9 +42,7 @@ def reset_diagnostic():
 
 def save_answer(question_id, answer):
     """질문에 대한 응답을 저장합니다."""
-    if question_id not in st.session_state.answers or st.session_state.answers[question_id] != answer:
-        st.session_state.answers[question_id] = answer
-        # 답변 저장 시 자동으로 다음 단계로 이동하지 않도록 함
+    st.session_state.answers[question_id] = answer
 
 def get_progress():
     """진단 진행 상황을 백분율로 반환합니다."""
@@ -112,114 +74,28 @@ def prev_stage():
 
 def calculate_diagnosis():
     """진단 결과를 계산하고 보고서 데이터를 생성합니다."""
-    try:
-        # 진단 결과 계산
-        diagnosis_result = calculate_score(st.session_state.answers)
-        # 개선 제안 생성
-        improvements = suggest_improvements(diagnosis_result)
-        diagnosis_result['improvements'] = improvements
-        # 세션 상태에 저장
-        st.session_state.diagnosis_result = diagnosis_result
-        
-        # RAGModel 초기화 전에 API 키 확인
-        api_key = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY"))
-        if not api_key:
-            raise ValueError("OpenAI API 키가 설정되지 않았습니다.")
-        
-        try:
-            with st.spinner("진단 보고서를 생성하고 있습니다..."):
-                rag_model = RAGModel()
-                if rag_model.llm is None or rag_model.vector_store is None:
-                    raise ValueError("RAG 모델 초기화에 실패했습니다.")
-                    
-                report_data = rag_model.generate_diagnosis_report(
-                    answers=st.session_state.answers,
-                    diagnosis_result=diagnosis_result
-                )
-                
-                # 보고서 데이터 구조 검증
-                required_keys = ["title", "level", "overview", "strengths_analysis", 
-                               "improvements_analysis", "action_plan", "upgrade_tips"]
-                if not all(key in report_data for key in required_keys):
-                    raise ValueError("보고서 데이터 구조가 올바르지 않습니다.")
-                    
-                st.session_state.report_data = report_data
-                
-        except Exception as e:
-            logging.exception(f"진단 보고서 생성 중 오류: {e}")
-            error_message = str(e)
-            if "API 키" in error_message:
-                error_message = "OpenAI API 키가 필요합니다. API 키를 설정해주세요."
-            elif "초기화" in error_message:
-                error_message = "RAG 모델 초기화에 실패했습니다. 다시 시도해주세요."
-            
-            st.error(error_message)
-            st.session_state.report_data = {
-                "title": "네이버 스마트 플레이스 최적화 전략 가이드",
-                "level": diagnosis_result.get("level", {}).get("name", "기본"),
-                "overview": error_message,
-                "strengths_analysis": error_message,
-                "improvements_analysis": error_message,
-                "action_plan": error_message,
-                "upgrade_tips": error_message
-            }
-    except Exception as e:
-        logging.exception(f"진단 계산 중 오류 발생: {e}")
-        error_message = "진단 계산 중 오류가 발생했습니다. 다시 시도해주세요."
-        st.error(error_message)
-        st.session_state.diagnosis_result = {
-            "level": {"name": "오류", "description": error_message}
-        }
-        st.session_state.report_data = {
-            "title": "오류 발생",
-            "level": "오류",
-            "overview": error_message,
-            "strengths_analysis": error_message,
-            "improvements_analysis": error_message,
-            "action_plan": error_message,
-            "upgrade_tips": error_message
-        }
+    # 진단 결과 계산
+    diagnosis_result = calculate_score(st.session_state.answers)
+    
+    # 개선 제안 생성
+    improvements = suggest_improvements(diagnosis_result)
+    diagnosis_result['improvements'] = improvements
+    
+    # 세션 상태에 저장
+    st.session_state.diagnosis_result = diagnosis_result
+    
+    # RAG 모델을 사용해 보고서 데이터 생성
+    with st.spinner("진단 보고서를 생성하고 있습니다..."):
+        rag_model = RAGModel()
+        report_data = rag_model.generate_diagnosis_report(
+            answers=st.session_state.answers,
+            diagnosis_result=diagnosis_result
+        )
+        st.session_state.report_data = report_data
 
 def toggle_copy():
     """복사 상태를 토글합니다."""
     st.session_state.copy_clicked = not st.session_state.copy_clicked
-
-def clipboard_button(text_to_copy: str, label: str = "📄", tooltip: str = "복사하기"):
-    # 버튼을 오른쪽 상단에 띄우기 위해 columns 사용
-    col1, col2 = st.columns([10, 1])
-    with col2:
-        # HTML+JS로 복사 버튼 구현
-        st.components.v1.html(f"""
-        <button id="copy-btn" title="{tooltip}" style="font-size:1.2em; border:none; background:transparent; cursor:pointer;">
-            {label}
-        </button>
-        <script>
-        const btn = document.getElementById('copy-btn');
-        btn.onclick = function() {{
-            navigator.clipboard.writeText({repr(text_to_copy)});
-            btn.innerText = "✅";
-            setTimeout(()=>{{btn.innerText="{label}";}}, 1200);
-        }};
-        </script>
-        """, height=35)
-
-def clean_text(text):
-    # 큰따옴표, 별표 등 불필요한 특수문자 제거
-    return re.sub(r'["*]', '', text)
-
-def clean_pdf_text(text):
-    text = re.sub(r'\n+', '\n', text)
-    text = re.sub(r'[ \t]+', ' ', text)
-    text = re.sub(r'\n\s*\n', '\n', text)
-    return text.strip()
-
-def check_openai_api_key(api_key):
-    try:
-        openai.api_key = api_key
-        openai.Model.list()  # 가장 간단한 API 호출
-        return True, "API 키가 정상적으로 작동합니다."
-    except Exception as e:
-        return False, f"API 키 오류: {e}"
 
 # 페이지 레이아웃
 def show_welcome_page():
@@ -263,49 +139,48 @@ def show_diagnostic_page():
     current_stage = st.session_state.current_stage
     st.title(f"{current_stage} 단계 진단")
     
+    # 현재 단계의 질문들 표시
     questions = diagnosis_questions[current_stage]
+    for question in questions:
+        q_id = question["id"]
+        st.markdown(f"### {question['question']}")
+        
+        # 이미 답변이 있는 경우 선택된 값으로 설정
+        default_index = 0
+        if q_id in st.session_state.answers:
+            options = [opt["value"] for opt in question["options"]]
+            selected_value = st.session_state.answers[q_id]
+            if selected_value in options:
+                default_index = options.index(selected_value)
+        
+        option = st.radio(
+            f"현재 상태를 선택하세요:",
+            options=[f"{opt['value']}. {opt['text']}" for opt in question["options"]],
+            key=f"radio_{q_id}",
+            index=default_index
+        )
+        
+        # 선택한 옵션 값 추출 및 저장
+        selected_value = option.split(".")[0]
+        save_answer(q_id, selected_value)
+        
+        st.markdown("---")
     
-    # 폼 대신 일반 컨테이너 사용
-    container = st.container()
-    with container:
-        for question in questions:
-            q_id = question["id"]
-            st.markdown(f"### {question['question']}")
-            options = [f"{opt['value']}. {opt['text']}" for opt in question["options"]]
-            default_index = 0
-            if q_id in st.session_state.answers:
-                selected_value = st.session_state.answers[q_id]
-                option_values = [opt["value"] for opt in question["options"]]
-                if selected_value in option_values:
-                    default_index = option_values.index(selected_value)
-            
-            # 라디오 버튼 선택 시 즉시 저장
-            option = st.radio(
-                f"현재 상태를 선택하세요:",
-                options=options,
-                key=f"radio_{q_id}",
-                index=default_index,
-                on_change=lambda: save_answer(q_id, option.split(".")[0])
-            )
-            selected_value = option.split(".")[0]
-            save_answer(q_id, selected_value)
-            st.markdown("---")
-    
-    # 네비게이션 버튼을 폼 밖으로 이동
+    # 네비게이션 버튼
     col1, col2, col3 = st.columns([1, 1, 1])
+    
     with col1:
-        if st.button("⬅️ 이전 단계", key="prev_button"):
-            prev_stage()
-            st.rerun()
+        if st.session_state.current_stage != list(diagnosis_questions.keys())[0]:
+            if st.button("이전 단계"):
+                prev_stage()
+    
     with col3:
-        if current_stage == list(diagnosis_questions.keys())[-1]:
-            if st.button("✅ 진단 완료", key="next_button", type="primary"):
+        if st.session_state.current_stage == list(diagnosis_questions.keys())[-1]:
+            if st.button("진단 완료", type="primary"):
                 next_stage()
-                st.rerun()
         else:
-            if st.button("다음 단계 ➡️", key="next_button", type="primary"):
+            if st.button("다음 단계", type="primary"):
                 next_stage()
-                st.rerun()
 
 def show_result_page():
     """결과 페이지를 표시합니다."""
@@ -314,58 +189,55 @@ def show_result_page():
         if st.button("진단 페이지로 돌아가기"):
             st.session_state.page = 'diagnostic'
         return
-
+    
     diagnosis_result = st.session_state.diagnosis_result
     report_data = st.session_state.report_data
-
-    # 보고서 데이터 유효성 검사
-    if not report_data or not isinstance(report_data, dict):
-        st.error("보고서 데이터가 올바르지 않습니다. 다시 진단을 시작해주세요.")
-        if st.button("진단 페이지로 돌아가기"):
-            st.session_state.page = 'diagnostic'
-        return
-
+    
     st.title("네이버 스마트 플레이스 최적화 진단 결과")
     
-    # 레벨 정보 표시
-    level_name = diagnosis_result.get('level', {}).get('name', '기본')
-    level_desc = diagnosis_result.get('level', {}).get('description', '')
-    st.markdown(f"**진단 레벨:** {level_name}")
-    if level_desc:
-        st.markdown(f"**레벨 설명:** {level_desc}")
+    # 핵심 정보만 표시
+    st.markdown(f"**진단 레벨:** {diagnosis_result['level']['name']}")
+    st.markdown(f"**레벨 설명:** {diagnosis_result['level']['description']}")
+    
+    # 전체 보고서 내용
+    full_report = f"""
+{report_data.get("current_diagnosis", "")}
 
-    # 보고서 섹션 정의
-    sections = {
-        "📊 종합 진단": report_data.get("overview", "진단 결과를 불러올 수 없습니다."),
-        "💪 강점 분석": report_data.get("strengths_analysis", "진단 결과를 불러올 수 없습니다."),
-        "🎯 개선점 분석": report_data.get("improvements_analysis", "진단 결과를 불러올 수 없습니다."),
-        "📝 액션 플랜": report_data.get("action_plan", "진단 결과를 불러올 수 없습니다."),
-        "💡 고급 전략 팁": report_data.get("upgrade_tips", "진단 결과를 불러올 수 없습니다.")
-    }
+{report_data.get("action_plan", "")}
 
-    # 전체 보고서 텍스트 생성
-    full_report = "\n\n".join([f"# {title}\n{content}" for title, content in sections.items()])
-
-    # 복사 버튼 컨테이너
+{report_data.get("upgrade_tips", "")}
+"""
+    
+    # 복사 기능
     copy_container = st.container()
+    
+    # 복사 버튼 (상단에 고정)
     with copy_container:
         if st.button("📋 전체 보고서 복사하기", key="copy_all", help="클릭하면 전체 보고서 내용을 복사할 수 있습니다"):
             toggle_copy()
-
+    
+    # 복사 영역 표시 (버튼 클릭 시)
     if st.session_state.copy_clicked:
         with copy_container:
             st.text_area("아래 내용을 선택하여 복사하세요 (Ctrl+A, Ctrl+C)", full_report, height=300)
             st.info("👆 위 텍스트를 선택하고 Ctrl+A, Ctrl+C를 눌러 복사하세요!")
             if st.button("닫기", key="close_copy"):
                 toggle_copy()
+    
+    # 진단 내용을 컨테이너에 담아 스크롤 가능하게 표시
+    with st.container():
+        # 현재 진단
+        st.markdown(report_data.get("current_diagnosis", ""))
         st.markdown("---")
-
-    # 각 섹션별로 표시
-    for title, content in sections.items():
-        st.markdown(f"## {title}")
-        st.markdown(content)
+        
+        # 액션 플랜
+        st.markdown(report_data.get("action_plan", ""))
         st.markdown("---")
-
+        
+        # 업그레이드 팁
+        st.markdown(report_data.get("upgrade_tips", ""))
+    
+    # 새 진단 시작
     st.markdown("## 새 진단 시작")
     if st.button("새로운 진단 시작하기"):
         reset_diagnostic()
@@ -373,95 +245,84 @@ def show_result_page():
 # 메인 앱 구성
 def main():
     """메인 애플리케이션 실행"""
-    try:
-        # 페이지 설정
+    # 페이지 설정
+    st.set_page_config(
+        page_title=APP_TITLE,
+        page_icon="🔍",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
+    
+    # 사이드바
+    with st.sidebar:
+        st.title("🔍 AI 마케팅 부스터")
+        st.markdown("---")
         
+        if st.session_state.page != 'welcome':
+            if st.button("처음으로 돌아가기"):
+                reset_diagnostic()
         
-        # 사이드바
-        with st.sidebar:
-            st.title("🔍 AI 마케팅 부스터")
-            st.markdown("---")
+        if st.session_state.page == 'result':
+            st.markdown("### 목차")
+            st.markdown("- [📊 현재 진단](#현재-진단)")
+            st.markdown("- [🎯 액션 플랜](#액션-플랜)")  
+            st.markdown("- [💡 업그레이드 팁](#업그레이드-팁)")
             
-            if st.session_state.page != 'welcome':
-                if st.button("처음으로 돌아가기"):
-                    reset_diagnostic()
-            
-            if st.session_state.page == 'result':
-                st.markdown("### 목차")
-                st.markdown("- [📊 현재 진단](#현재-진단)")
-                st.markdown("- [🎯 액션 플랜](#액션-플랜)")  
-                st.markdown("- [💡 업그레이드 팁](#업그레이드-팁)")
-                
-                # 전체 보고서 복사 버튼 (사이드바에도 추가)
-                if st.button("📋 전체 보고서 복사", key="sidebar_copy"):
-                    toggle_copy()
-            
-            st.markdown("---")
-            st.markdown("### 개발자 정보")
-            st.markdown("스마트 플레이스 최적화 컨설팅")
-            st.markdown("연락처: stella.cholong.jung@gmail.com")
-            
-            st.markdown("---")
-            st.markdown("© 2025 스마트 플레이스 최적화 컨설팅")
+            # 전체 보고서 복사 버튼 (사이드바에도 추가)
+            if st.button("📋 전체 보고서 복사", key="sidebar_copy"):
+                toggle_copy()
         
-        # 페이지 표시
-        if st.session_state.page == 'welcome':
-            show_welcome_page()
-        elif st.session_state.page == 'diagnostic':
-            show_diagnostic_page()
-        elif st.session_state.page == 'result':
-            show_result_page()
+        st.markdown("---")
+        st.markdown("### 개발자 정보")
+        st.markdown("스마트 플레이스 최적화 컨설팅")
+        st.markdown("연락처: stella.cholong.jung@gmail.com")
+        
+        st.markdown("---")
+        st.markdown("© 2025 스마트 플레이스 최적화 컨설팅")
+    
+    # 페이지 표시
+    if st.session_state.page == 'welcome':
+        show_welcome_page()
+    elif st.session_state.page == 'diagnostic':
+        show_diagnostic_page()
+    elif st.session_state.page == 'result':
+        show_result_page()
+        
+    # 맨 밑에 고정된 복사 버튼 추가 (결과 페이지인 경우)
+    if st.session_state.page == 'result' and not st.session_state.copy_clicked:
+        # 고정된 위치에 복사 버튼 표시
+        st.markdown(
+            """
+            <style>
+            .floating-button {
+                position: fixed;
+                bottom: 20px;
+                right: 20px;
+                z-index: 1000;
+                border-radius: 50%;
+                width: 60px;
+                height: 60px;
+                font-size: 24px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                background-color: #ff4b4b;
+                color: white;
+                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+                cursor: pointer;
+                border: none;
+            }
+            .floating-button:hover {
+                background-color: #ff2e2e;
+            }
+            </style>
             
-        # 맨 밑에 고정된 복사 버튼 추가 (결과 페이지인 경우)
-        if st.session_state.page == 'result' and not st.session_state.copy_clicked:
-            # 고정된 위치에 복사 버튼 표시
-            st.markdown(
-                """
-                <style>
-                .floating-button {
-                    position: fixed;
-                    bottom: 20px;
-                    right: 20px;
-                    z-index: 1000;
-                    border-radius: 50%;
-                    width: 60px;
-                    height: 60px;
-                    font-size: 24px;
-                    display: flex;
-                    align-items: center;
-                    justify-content: center;
-                    background-color: #ff4b4b;
-                    color: white;
-                    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-                    cursor: pointer;
-                    border: none;
-                }
-                .floating-button:hover {
-                    background-color: #ff2e2e;
-                }
-                </style>
-                
-                <button class="floating-button" onclick="document.getElementById('copy_all').click()">
-                    📋 전체 보고서 복사하기
-                </button>
-                """,
-                unsafe_allow_html=True
-            )
-    except Exception as e:
-        st.error(f"애플리케이션 실행 중 오류 발생: {e}")
-# streamlit_app.py에서 vector_store 임포트 부분 수정
-try:
-    from utils.vector_store import VectorStore
-    vector_store_available = True
-except Exception as e:
-    st.sidebar.error(f"VectorStore 임포트 오류: {e}")
-    vector_store_available = False
+            <button class="floating-button" onclick="document.getElementById('copy_all').click()">
+                📋
+            </button>
+            """,
+            unsafe_allow_html=True
+        )
 
-try:
-    from utils.rag_model import RAGModel
-    rag_model_available = True
-except Exception as e:
-    st.sidebar.error(f"RAGModel 임포트 오류: {e}")
-    rag_model_available = False 
 if __name__ == "__main__":
-    main()
+    main() 

@@ -24,11 +24,11 @@ APP_DESCRIPTION = "네이버 스마트 플레이스 최적화를 위한 AI 기�
 CHUNK_SIZE = 500
 CHUNK_OVERLAP = 50
 EMBEDDING_MODEL = "text-embedding-3-small"
-# LLM 모델 설정 (최신 gpt-4o-mini-2024-07-18 사용)
+# RAG 모델 설정 
 LLM_MODEL = "gpt-4o-mini-2024-07-18"  # 기존 "gpt-4o"에서 변경
 TEMPERATURE = 0.2
 
 # PDF 설정
 COMPANY_NAME = "스마트 플레이스 최적화 컨설팅"
 REPORT_TITLE = "스마트 플레이스 최적화 진단 보고서"
-LOGO_PATH = os.path.join(PROJECT_ROOT, "assets", "logo.png") 
+LOGO_PATH = os.path.join(PROJECT_ROOT, "assets", "logo.png")
